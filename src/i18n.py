@@ -82,6 +82,11 @@ TRANSLATIONS = {
     "maps_custom": {"de": "Eigene / Mod-Karten", "en": "Custom / mod maps"},
     "maps_select_btn": {"de": "Als aktive Karte setzen", "en": "Set as active map"},
     "maps_current": {"de": "aktiv", "en": "active"},
+    "maps_paid": {"de": "DLC", "en": "DLC"},
+    "maps_paid_hint": {
+        "de": "Kostenpflichtiges Expansion-Pack – der Server lädt es gratis, aber Spieler müssen das DLC in Steam besitzen, um beizutreten.",
+        "en": "Paid expansion pack – the server downloads it for free, but players must own the DLC on Steam to join.",
+    },
     "maps_modmap_note": {
         "de": "Mod-Karte – die zugehörige Mod-ID muss unter „Mods“ eingetragen sein "
               "(oder „Mods automatisch verwalten“ aktiv).",
