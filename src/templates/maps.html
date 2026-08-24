@@ -15,7 +15,7 @@
     <form method="post" action="{{ url_for('maps_select') }}" class="map-card {{ 'on' if m.code == active }}">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <input type="hidden" name="code" value="{{ m.code }}">
-      <div class="map-name">{{ m.name }}</div>
+      <div class="map-name">{{ m.name }}{% if m.paid %} <span class="map-tag paid" title="{{ t('maps_paid_hint') }}">{{ t('maps_paid') }}</span>{% endif %}</div>
       <div class="map-code mono">{{ m.code }}</div>
       {% if m.code == active %}
         <span class="map-badge">{{ t('maps_current') }}</span>
@@ -25,7 +25,7 @@
     </form>
     {% endfor %}
   </div>
-
+  <p class="hint-line"><span class="map-tag paid">{{ t('maps_paid') }}</span> {{ t('maps_paid_hint') }}</p>
   {% if custom %}
   <h3 class="subhead">{{ t('maps_custom') }}</h3>
   <div class="map-grid">
