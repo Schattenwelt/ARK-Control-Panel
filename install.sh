@@ -81,10 +81,21 @@ fi
 usermod -aG systemd-journal "$ARK_USER" || true
 
 # ------------------------- ARK-Server installieren --------------------------
+# Hinweis: Beim allerersten SteamCMD-Lauf ist der App-/Depot-Cache noch leer,
+# weshalb der erste app_update oft mit "Missing configuration" abbricht (und
+# dabei sogar Exit-Code 0 liefern kann). Deshalb wird auf die vorhandene Binary
+# geprüft und bis zu 5x wiederholt, statt dem Exit-Code zu vertrauen.
 msg "Installiere ARK-Server via SteamCMD (mehrere GB, kann lange dauern) ..."
-sudo -u "$ARK_USER" -H bash -c "\
-    '$STEAMCMD' +force_install_dir '$INSTALL_DIR' \
-    +login anonymous +app_update '$APPID' validate +quit"
+ARK_BIN="$INSTALL_DIR/ShooterGame/Binaries/Linux/ShooterGameServer"
+tries=0
+while [ ! -x "$ARK_BIN" ] && [ "$tries" -lt 5 ]; do
+    tries=$((tries+1))
+    [ "$tries" -gt 1 ] && { warn "SteamCMD-Versuch $tries ('Missing configuration' beim 1. Lauf ist normal) ..."; sleep 5; }
+    sudo -u "$ARK_USER" -H bash -c "\
+        '$STEAMCMD' +force_install_dir '$INSTALL_DIR' \
+        +login anonymous +app_update '$APPID' validate +quit" || true
+done
+[ -x "$ARK_BIN" ] || die "ARK-Server-Binary nach $tries Versuchen nicht vorhanden – Logs prüfen: ~${ARK_USER}/.local/share/Steam/logs/stderr.txt"
 
 # steamclient.so für das SDK verlinken
 msg "Richte steamclient.so ein ..."
