@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_mods') }} · ARK Panel{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('mods_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('mods_intro') }}</p>
+
+  <form method="post" action="{{ url_for('mods_automanaged') }}" class="toggle-row">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label class="switch-label">
+      <input type="checkbox" name="automanaged_mods" {{ 'checked' if rt.automanaged_mods }}
+             onchange="this.form.submit()">
+      <span>{{ t('mods_automanaged') }}</span>
+    </label>
+  </form>
+  <p class="muted small">{{ t('mods_automanaged_help') }}</p>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('mods_add_title') }}</h2></div>
+  <form method="post" action="{{ url_for('mods_add') }}" class="mod-add">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input name="mod_id" placeholder="{{ t('mods_add_id_ph') }}" spellcheck="false" inputmode="numeric" required>
+    <input name="name" placeholder="{{ t('mods_add_name_ph') }}" spellcheck="false">
+    <button class="btn primary" type="submit">{{ t('mods_add_btn') }}</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ t('mods_list_title') }} <span class="pill">{{ mods|length }}</span></h2>
+  </div>
+  {% if not mods %}
+    <p class="muted">{{ t('mods_empty') }}</p>
+  {% else %}
+  <ul class="mods">
+    {% for m in mods %}
+    <li>
+      <div class="mod-order">
+        <form method="post" action="{{ url_for('mods_move') }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="mod_id" value="{{ m.id }}">
+          <input type="hidden" name="dir" value="up">
+          <button class="btn tiny" type="submit" {{ 'disabled' if loop.first }}>{{ t('mods_up') }}</button>
+        </form>
+        <span class="mod-pos mono">{{ loop.index }}</span>
+        <form method="post" action="{{ url_for('mods_move') }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="mod_id" value="{{ m.id }}">
+          <input type="hidden" name="dir" value="down">
+          <button class="btn tiny" type="submit" {{ 'disabled' if loop.last }}>{{ t('mods_down') }}</button>
+        </form>
+      </div>
+      <div class="mod-info">
+        {% if m.name %}<span class="pname">{{ m.name }}</span>{% endif %}
+        <span class="mono sid">{{ m.id }}</span>
+      </div>
+      <div class="mod-actions">
+        <a class="btn tiny" target="_blank" rel="noopener"
+           href="https://steamcommunity.com/sharedfiles/filedetails/?id={{ m.id }}">{{ t('mods_workshop_link') }}</a>
+        <form method="post" action="{{ url_for('mods_remove') }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="mod_id" value="{{ m.id }}">
+          <button class="btn tiny danger" type="submit">{{ t('mods_remove_btn') }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

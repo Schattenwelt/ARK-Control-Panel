@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_account') }} · ARK Panel{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h2>{{ t('change_password') }}</h2>
+    <span class="muted mono">{{ t('logged_in_as') }} {{ me.name }}</span>
+  </div>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>{{ t('current_password') }}
+      <input name="current" type="password" autocomplete="current-password" required>
+    </label>
+    <label>{{ t('new_password') }}
+      <input name="new" type="password" autocomplete="new-password" required>
+    </label>
+    <label>{{ t('repeat_new_password') }}
+      <input name="confirm" type="password" autocomplete="new-password" required>
+    </label>
+    <button class="btn primary" type="submit">{{ t('change_password') }}</button>
+  </form>
+</section>
+{% endblock %}

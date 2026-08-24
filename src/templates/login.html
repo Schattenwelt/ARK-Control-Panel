@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login_title') }} · ARK Panel{% endblock %}
+{% block chrome %}
+  <div class="login-lang">
+    {% for code in LANGS %}
+    <a href="{{ url_for('set_lang', code=code) }}" class="{{ 'on' if current_lang() == code }}">{{ code|upper }}</a>
+    {% endfor %}
+  </div>
+{% endblock %}
+{% block content %}
+<div class="login-shell">
+  <div class="login-card">
+    <div class="login-head">
+      <span class="brand-mark big" aria-hidden="true"></span>
+      <h1>ARK <span>Control</span></h1>
+      <p class="muted">{{ t('login_subtitle') }}</p>
+    </div>
+    <form method="post" class="stack">
+      <label>{{ t('username') }}
+        <input name="username" autocomplete="username" autofocus required>
+      </label>
+      <label>{{ t('password') }}
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn primary" type="submit">{{ t('login_btn') }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_maps') }} · ARK Panel{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ t('maps_active') }}</h2>
+    <span class="muted mono">{{ active }}</span>
+  </div>
+  <p class="muted small" style="margin-top:0">{{ t('maps_active_hint') }}</p>
+
+  <h3 class="subhead">{{ t('maps_official') }}</h3>
+  <div class="map-grid">
+    {% for m in official %}
+    <form method="post" action="{{ url_for('maps_select') }}" class="map-card {{ 'on' if m.code == active }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="code" value="{{ m.code }}">
+      <div class="map-name">{{ m.name }}</div>
+      <div class="map-code mono">{{ m.code }}</div>
+      {% if m.code == active %}
+        <span class="map-badge">{{ t('maps_current') }}</span>
+      {% else %}
+        <button class="btn tiny" type="submit">{{ t('maps_select_btn') }}</button>
+      {% endif %}
+    </form>
+    {% endfor %}
+  </div>
+
+  {% if custom %}
+  <h3 class="subhead">{{ t('maps_custom') }}</h3>
+  <div class="map-grid">
+    {% for m in custom %}
+    <div class="map-card {{ 'on' if m.code == active }}">
+      <div class="map-name">{{ m.name }}</div>
+      <div class="map-code mono">{{ m.code }}</div>
+      {% if m.mod_id %}
+        <div class="muted small" style="margin:0">{{ t('maps_modid_label') }}: {{ m.mod_id }}</div>
+      {% endif %}
+      <div class="map-card-actions">
+        {% if m.code == active %}
+          <span class="map-badge">{{ t('maps_current') }}</span>
+        {% else %}
+          <form method="post" action="{{ url_for('maps_select') }}" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="code" value="{{ m.code }}">
+            <button class="btn tiny" type="submit">{{ t('maps_select_btn') }}</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('maps_delete') }}" class="inline"
+              onsubmit="return confirm('{{ m.name }}?');">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="code" value="{{ m.code }}">
+          <button class="btn tiny danger" type="submit">{{ t('maps_delete_btn') }}</button>
+        </form>
+      </div>
+      {% if m.mod_id %}<p class="muted small modmap-note">{{ t('maps_modmap_note') }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('maps_add_title') }}</h2></div>
+  <form method="post" action="{{ url_for('maps_add') }}" class="map-add">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input name="code" placeholder="{{ t('maps_add_code_ph') }}" spellcheck="false" required>
+    <input name="name" placeholder="{{ t('maps_add_name_ph') }}" spellcheck="false">
+    <input name="mod_id" placeholder="{{ t('maps_add_mod_ph') }}" spellcheck="false" inputmode="numeric">
+    <button class="btn primary" type="submit">{{ t('maps_add_btn') }}</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('launch_title') }}</h2></div>
+  <form method="post" action="{{ url_for('maps_launch') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div class="grid">
+      <label class="field">
+        <span class="fname">{{ t('launch_session') }}</span>
+        <input name="session_name" value="{{ rt.session_name }}" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('launch_maxplayers') }}</span>
+        <input name="max_players" value="{{ rt.max_players }}" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('launch_port') }}</span>
+        <input name="port" value="{{ rt.port }}" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('launch_query') }}</span>
+        <input name="query_port" value="{{ rt.query_port }}" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('launch_rconport') }}</span>
+        <input name="rcon_port" value="{{ rt.rcon_port }}" inputmode="numeric">
+      </label>
+      <label class="field check">
+        <span class="fname">{{ t('launch_battleye') }}</span>
+        <input type="checkbox" name="battleye" {{ 'checked' if rt.battleye }}>
+      </label>
+    </div>
+    <label class="field" style="margin-top:12px">
+      <span class="fname">{{ t('launch_extra') }}</span>
+      <input name="extra_args" value="{{ rt.extra_args }}" placeholder="{{ t('launch_extra_ph') }}" spellcheck="false">
+    </label>
+    <div class="actions">
+      <button class="btn primary" type="submit">{{ t('launch_save_btn') }}</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

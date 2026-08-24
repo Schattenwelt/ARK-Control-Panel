@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang() }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}ARK Panel{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% block chrome %}
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>ARK<span class="brand-sub">Control</span></span>
+    </a>
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if request.endpoint == 'dashboard' }}">{{ t('nav_overview') }}</a>
+      <a href="{{ url_for('maps_page') }}" class="{{ 'on' if request.endpoint == 'maps_page' }}">{{ t('nav_maps') }}</a>
+      <a href="{{ url_for('mods_page') }}" class="{{ 'on' if request.endpoint == 'mods_page' }}">{{ t('nav_mods') }}</a>
+      <a href="{{ url_for('config') }}" class="{{ 'on' if request.endpoint == 'config' }}">{{ t('nav_config') }}</a>
+      <a href="{{ url_for('users_page') }}" class="{{ 'on' if request.endpoint == 'users_page' }}">{{ t('nav_users') }}</a>
+      <a href="{{ url_for('account') }}" class="{{ 'on' if request.endpoint == 'account' }}">{{ t('nav_account') }}</a>
+      {% if me %}<span class="nav-user">{{ me.name }}</span>{% endif %}
+      <span class="lang-switch">
+        {% for code in LANGS %}
+        <a href="{{ url_for('set_lang', code=code) }}" class="{{ 'on' if current_lang() == code }}">{{ code|upper }}</a>
+        {% endfor %}
+      </span>
+      <a href="{{ url_for('logout') }}" class="logout">{{ t('nav_logout') }}</a>
+    </nav>
+  </header>
+{% endblock %}
+
+  <main class="wrap">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash">
+          {% for m in messages %}<p>{{ m }}</p>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
