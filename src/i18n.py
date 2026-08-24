@@ -238,6 +238,9 @@ TRANSLATIONS = {
     "save_shutdown_done": {
         "de": "Welt gespeichert, Server wird beendet.",
         "en": "World saved, server is shutting down."},
+    "shutdown_nosave": {
+        "de": "Server gestoppt. Welt konnte vorher nicht per RCON gespeichert werden (Server nicht erreichbar) – der letzte Auto-Save der Karte gilt.",
+        "en": "Server stopped. World could not be saved via RCON beforehand (server unreachable) – the map's last auto-save applies."},
     "unknown_rcon": {"de": "Unbekannte RCON-Aktion.", "en": "Unknown RCON action."},
     "rcon_failed": {"de": "RCON nicht möglich: {err}", "en": "RCON not possible: {err}"},
     "rcon_enabled_gen": {

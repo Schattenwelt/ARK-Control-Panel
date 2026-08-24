@@ -873,6 +873,29 @@ def rcon_action():
         flash(t("csrf_invalid"))
         return redirect(url_for("dashboard"))
     act = request.form.get("act")
+
+    # "Speichern & Stoppen" gesondert behandeln: Welt speichern ist best-effort
+    # (RCON kann bei einem hängenden/abstürzenden Server tot sein), aber der
+    # Service muss in JEDEM Fall sauber gestoppt werden. systemctl disable --now
+    # stoppt den Dienst manuell -> die Restart=on-failure-Policy greift dabei
+    # nicht, sonst würde der Server sofort neu starten ("geht nicht aus").
+    if act == "save_shutdown":
+        saved = False
+        try:
+            with rcon_connect() as r:
+                r.save()
+                saved = True
+        except (RCONError, OSError):
+            saved = False
+        rc, out = svc("disable", "--now", SERVICE)
+        if rc != 0:
+            flash(out)
+        elif saved:
+            flash(t("save_shutdown_done"))
+        else:
+            flash(t("shutdown_nosave"))
+        return redirect(url_for("dashboard"))
+
     try:
         with rcon_connect() as r:
             if act == "save":
@@ -884,11 +907,6 @@ def rcon_action():
                 else:
                     r.broadcast(msg)
                     flash(t("broadcast_sent"))
-            elif act == "save_shutdown":
-                r.save()
-                r.shutdown()
-                svc("disable", SERVICE)
-                flash(t("save_shutdown_done"))
             else:
                 flash(t("unknown_rcon"))
     except (RCONError, OSError) as e:
