@@ -37,7 +37,12 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><h2>{{ t('connect_title') }}</h2></div>
+  <div class="panel-head">
+    <h2>{{ t('connect_title') }}</h2>
+    {% if connect_kind == 'auto' %}<span class="addr-kind auto">{{ t('connect_kind_auto') }}</span>
+    {% elif connect_kind == 'manual' %}<span class="addr-kind">{{ t('connect_kind_manual') }}</span>
+    {% else %}<span class="addr-kind local">{{ t('connect_kind_local') }}</span>{% endif %}
+  </div>
   <div class="connect-grid">
     <div class="connect-row">
       <div class="connect-meta">
@@ -56,7 +61,7 @@
       <button class="btn tiny" type="button" onclick="copyAddr('addr-console', this)">{{ t('connect_copy') }}</button>
     </div>
   </div>
-  {% if not connect_public %}
+  {% if connect_kind == 'local' %}
   <p class="hint-line">{{ t('connect_local_note') }}</p>
   {% endif %}
 </section>
