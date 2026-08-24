@@ -390,3 +390,29 @@ input:focus, textarea:focus {
   .info-strip { grid-template-columns: 1fr; }
   .map-add input, .mod-add input { min-width: 100%; }
 }
+
+/* --- DLC-Kennzeichnung bei Karten --- */
+.map-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+.map-tag.paid {
+  color: #05121d;
+  background: var(--blue);
+  cursor: help;
+}
+.hint-line {
+  margin: 10px 2px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
