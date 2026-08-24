@@ -12,6 +12,8 @@ import secrets
 import socket
 import subprocess
 import threading
+import time
+import urllib.request
 from functools import wraps
 
 from flask import (Flask, redirect, render_template, request,
@@ -438,6 +440,41 @@ def local_ipv4():
         s.close()
 
 
+# Öffentliche IP über externe Echo-Dienste ermitteln (für Server hinter NAT).
+# Ergebnis wird gecacht; auch Fehlschläge werden kurz gecacht, damit das
+# Dashboard ohne Internet-Egress nicht bei jedem Aufruf blockiert.
+_PUBIP_SERVICES = [
+    "https://api.ipify.org",
+    "https://checkip.amazonaws.com",
+    "https://ifconfig.me/ip",
+]
+_PUBIP_TTL = 600        # gültige IP 10 Minuten cachen
+_PUBIP_FAIL_TTL = 120   # Fehlschlag 2 Minuten cachen
+_IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+_pubip_cache = {"ip": None, "ts": 0.0, "ok": False}
+
+
+def detect_public_ip(timeout=2.0):
+    """Öffentliche IPv4 ermitteln (gecacht). Gibt die IP oder None zurück."""
+    now = time.time()
+    ttl = _PUBIP_TTL if _pubip_cache["ok"] else _PUBIP_FAIL_TTL
+    if now - _pubip_cache["ts"] < ttl:
+        return _pubip_cache["ip"]
+    ip = None
+    for url in _PUBIP_SERVICES:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ark-panel"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                candidate = resp.read().decode("utf-8", "ignore").strip()
+            if _IPV4_RE.match(candidate):
+                ip = candidate
+                break
+        except Exception:
+            continue
+    _pubip_cache.update(ip=ip, ts=now, ok=bool(ip))
+    return ip
+
+
 def all_maps():
     """Offizielle + eigene Karten als Liste aus dicts {code, name, mod_id, official}."""
     maps = [{"code": c, "name": n, "mod_id": "", "official": True, "paid": p}
@@ -494,7 +531,15 @@ def logout():
 @login_required
 def dashboard():
     rt = load_runtime()
-    ip = rt.get("public_address", "").strip() or local_ipv4()
+    manual = rt.get("public_address", "").strip()
+    if manual:
+        ip, kind = manual, "manual"
+    else:
+        pub = detect_public_ip()
+        if pub:
+            ip, kind = pub, "auto"
+        else:
+            ip, kind = local_ipv4(), "local"
     return render_template(
         "dashboard.html",
         state=service_active(SERVICE),
@@ -508,7 +553,7 @@ def dashboard():
         connect_ip=ip,
         connect_query=rt.get("query_port", 27015),
         connect_game=rt.get("port", 7777),
-        connect_public=bool(rt.get("public_address", "").strip()),
+        connect_kind=kind,
     )
 
 
