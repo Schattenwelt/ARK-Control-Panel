@@ -37,6 +37,43 @@
 </section>
 
 <section class="panel">
+  <div class="panel-head"><h2>{{ t('connect_title') }}</h2></div>
+  <div class="connect-grid">
+    <div class="connect-row">
+      <div class="connect-meta">
+        <span class="connect-label">{{ t('connect_steam') }}</span>
+        <span class="muted small">{{ t('connect_steam_hint') }}</span>
+      </div>
+      <code class="connect-addr" id="addr-steam">{{ connect_ip }}:{{ connect_query }}</code>
+      <button class="btn tiny" type="button" onclick="copyAddr('addr-steam', this)">{{ t('connect_copy') }}</button>
+    </div>
+    <div class="connect-row">
+      <div class="connect-meta">
+        <span class="connect-label">{{ t('connect_console') }}</span>
+        <span class="muted small">{{ t('connect_console_hint') }}</span>
+      </div>
+      <code class="connect-addr" id="addr-console">open {{ connect_ip }}:{{ connect_game }}</code>
+      <button class="btn tiny" type="button" onclick="copyAddr('addr-console', this)">{{ t('connect_copy') }}</button>
+    </div>
+  </div>
+  {% if not connect_public %}
+  <p class="hint-line">{{ t('connect_local_note') }}</p>
+  {% endif %}
+</section>
+
+<script>
+function copyAddr(id, btn) {
+  var el = document.getElementById(id);
+  var txt = el.textContent.replace(/^open /, "");
+  navigator.clipboard.writeText(txt).then(function () {
+    var old = btn.textContent;
+    btn.textContent = "\u2713";
+    setTimeout(function () { btn.textContent = old; }, 1200);
+  });
+}
+</script>
+
+<section class="panel">
   <div class="panel-head">
     <h2>{{ t('players_online') }} <span class="pill" id="player-count">–</span></h2>
     <span class="muted mono" id="rcon-note"></span>
