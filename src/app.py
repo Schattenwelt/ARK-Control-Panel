@@ -51,20 +51,22 @@ _state_lock = threading.Lock()
 
 # Offizielle Karten (Code -> Anzeigename). Reihenfolge = Anzeige.
 OFFICIAL_MAPS = [
-    ("TheIsland",     "The Island"),
-    ("TheCenter",     "The Center"),
-    ("ScorchedEarth_P", "Scorched Earth"),
-    ("Ragnarok",      "Ragnarok"),
-    ("Aberration_P",  "Aberration"),
-    ("Extinction",    "Extinction"),
-    ("Valguero_P",    "Valguero"),
-    ("Genesis",       "Genesis: Part 1"),
-    ("CrystalIsles",  "Crystal Isles"),
-    ("Gen2",          "Genesis: Part 2"),
-    ("LostIsland",    "Lost Island"),
-    ("Fjordur",       "Fjordur"),
+    # (code, name, paid)  -- paid=True = kostenpflichtiges Expansion-Pack,
+    # das Spieler besitzen müssen, um beizutreten (der Server lädt alle Karten gratis).
+    ("TheIsland",     "The Island",      False),
+    ("TheCenter",     "The Center",      False),
+    ("ScorchedEarth_P", "Scorched Earth", True),
+    ("Ragnarok",      "Ragnarok",        False),
+    ("Aberration_P",  "Aberration",      True),
+    ("Extinction",    "Extinction",      True),
+    ("Valguero_P",    "Valguero",        False),
+    ("Genesis",       "Genesis: Part 1", True),
+    ("CrystalIsles",  "Crystal Isles",   False),
+    ("Gen2",          "Genesis: Part 2", True),
+    ("LostIsland",    "Lost Island",     False),
+    ("Fjordur",       "Fjordur",         False),
 ]
-OFFICIAL_CODES = {c for c, _ in OFFICIAL_MAPS}
+OFFICIAL_CODES = {c for c, _, _ in OFFICIAL_MAPS}
 
 RUNTIME_DEFAULTS = {
     "map": "TheIsland",
@@ -421,10 +423,11 @@ def ensure_rcon_configured():
 # ---------------------------------------------------------------------------
 def all_maps():
     """Offizielle + eigene Karten als Liste aus dicts {code, name, mod_id, official}."""
-    maps = [{"code": c, "name": n, "mod_id": "", "official": True} for c, n in OFFICIAL_MAPS]
+    maps = [{"code": c, "name": n, "mod_id": "", "official": True, "paid": p}
+            for c, n, p in OFFICIAL_MAPS]
     for m in load_custom_maps():
         maps.append({"code": m["code"], "name": m["name"],
-                     "mod_id": m.get("mod_id", ""), "official": False})
+                     "mod_id": m.get("mod_id", ""), "official": False, "paid": False})
     return maps
 
 
@@ -538,7 +541,8 @@ def update_logs():
 def maps_page():
     rt = load_runtime()
     return render_template("maps.html", rt=rt,
-                           official=[{"code": c, "name": n} for c, n in OFFICIAL_MAPS],
+                           official=[{"code": c, "name": n, "paid": p}
+                                     for c, n, p in OFFICIAL_MAPS],
                            custom=load_custom_maps(),
                            active=rt["map"])
 
