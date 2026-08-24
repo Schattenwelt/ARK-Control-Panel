@@ -38,6 +38,18 @@ if [ "$MEM_GB" -lt 6 ]; then
     warn "Nur ${MEM_GB} GB RAM erkannt. ARK empfiehlt 8–16 GB (min. 6 GB)."
 fi
 
+# vm.max_map_count-Hinweis: ARK mappt sehr viele Speicherregionen. Ist der Wert
+# zu niedrig, stürzt der Server trotz freiem RAM mit SIGABRT (status=6/ABRT) ab.
+# Der Parameter ist HOSTWEIT und im (unprivilegierten) LXC nicht setzbar –
+# daher hier nur warnen und den exakten Host-Befehl nennen.
+MMC="$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)"
+if [ "$MMC" -lt 262144 ]; then
+    warn "vm.max_map_count = ${MMC} (zu niedrig – ARK braucht mind. 262144)."
+    warn "Auf dem PROXMOX-HOST setzen (nicht im Container):"
+    warn "  echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-ark.conf && sysctl -p /etc/sysctl.d/99-ark.conf"
+    warn "Ohne diesen Wert stürzt der Server beim/nach dem Laden mit SIGABRT ab."
+fi
+
 # Zugangsdaten abfragen, falls nicht gesetzt
 if [ -z "$PANEL_USER" ]; then
     read -rp "Panel-Benutzername [admin]: " PANEL_USER
