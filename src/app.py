@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import subprocess
 import threading
 from functools import wraps
@@ -75,6 +76,7 @@ RUNTIME_DEFAULTS = {
     "port": 7777,
     "query_port": 27015,
     "rcon_port": 27020,
+    "public_address": "",   # optionale öffentliche IP / DDNS-Hostname für die Anzeige
     "battleye": True,
     "automanaged_mods": False,
     "mods": [],
@@ -421,6 +423,21 @@ def ensure_rcon_configured():
 # ---------------------------------------------------------------------------
 # Karten-/Mod-Helfer
 # ---------------------------------------------------------------------------
+def local_ipv4():
+    """Primäre lokale IPv4 des Containers (ausgehendes Interface), ohne echten Verbindungsaufbau."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))   # nichts wird gesendet; ermittelt nur die Quell-IP
+        return s.getsockname()[0]
+    except OSError:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except OSError:
+            return "127.0.0.1"
+    finally:
+        s.close()
+
+
 def all_maps():
     """Offizielle + eigene Karten als Liste aus dicts {code, name, mod_id, official}."""
     maps = [{"code": c, "name": n, "mod_id": "", "official": True, "paid": p}
@@ -477,6 +494,7 @@ def logout():
 @login_required
 def dashboard():
     rt = load_runtime()
+    ip = rt.get("public_address", "").strip() or local_ipv4()
     return render_template(
         "dashboard.html",
         state=service_active(SERVICE),
@@ -487,6 +505,10 @@ def dashboard():
         active_map=map_name_for(rt["map"]),
         mods_count=len(rt["mods"]),
         service=SERVICE,
+        connect_ip=ip,
+        connect_query=rt.get("query_port", 27015),
+        connect_game=rt.get("port", 7777),
+        connect_public=bool(rt.get("public_address", "").strip()),
     )
 
 
@@ -616,6 +638,8 @@ def maps_launch():
     try:
         session_name = request.form.get("session_name", "").strip() or "ARK Server"
         session_name = session_name.replace("?", "").replace("\n", "").replace("\r", "")
+        public_address = request.form.get("public_address", "").strip()
+        public_address = public_address.replace(" ", "").replace("\n", "").replace("\r", "")
         max_players = int(request.form.get("max_players", "70"))
         port = int(request.form.get("port", "7777"))
         query_port = int(request.form.get("query_port", "27015"))
@@ -629,6 +653,7 @@ def maps_launch():
             "session_name": session_name,
             "max_players": max(1, max_players),
             "port": port, "query_port": query_port, "rcon_port": rcon_port,
+            "public_address": public_address,
             "battleye": bool(request.form.get("battleye")),
             "extra_args": request.form.get("extra_args", "").strip(),
         })
