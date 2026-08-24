@@ -416,3 +416,40 @@ input:focus, textarea:focus {
   align-items: center;
   gap: 8px;
 }
+
+/* --- Verbinden-Box (Dashboard) --- */
+.connect-grid { display: flex; flex-direction: column; gap: 10px; }
+.connect-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.connect-meta { display: flex; flex-direction: column; min-width: 190px; }
+.connect-label { font-weight: 600; }
+.connect-addr {
+  flex: 1;
+  min-width: 160px;
+  font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 14px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  user-select: all;
+}
+
+/* --- Adress-Art-Label in der Verbinden-Box --- */
+.addr-kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.addr-kind.auto { color: #05121d; background: var(--blue); border-color: var(--blue); }
+.addr-kind.local { color: #d38b2f; border-color: #d38b2f; }
