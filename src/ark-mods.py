@@ -195,15 +195,16 @@ def extract_all_z(root):
     return count
 
 
-def download_mod(modid):
-    """Ruft SteamCMD auf. Gibt True zurück, wenn ein Download-Erfolg gemeldet wurde.
+def download_mod(modid, validate=True):
+    """Ruft SteamCMD einmal auf. Gibt True zurück, wenn 'Success' gemeldet wurde.
     Der SteamCMD-Download-Ordner wird NICHT verändert (das erledigt install_mod
     auf einer Kopie) – so bleibt SteamCMDs Zustand für Folgeläufe intakt."""
-    proc = subprocess.run(
-        [STEAMCMD, "+login", "anonymous",
-         "+workshop_download_item", GAME_APPID, str(modid), "+quit"],
-        check=False, capture_output=True, text=True,
-    )
+    cmd = [STEAMCMD, "+login", "anonymous",
+           "+workshop_download_item", GAME_APPID, str(modid)]
+    if validate:
+        cmd.append("validate")
+    cmd.append("+quit")
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
     out = ((proc.stdout or "") + (proc.stderr or ""))
     for line in out.splitlines():
         if line.strip():
@@ -211,22 +212,41 @@ def download_mod(modid):
     return "success. downloaded item" in out.lower()
 
 
+def mod_content_present(modid):
+    """True, wenn der heruntergeladene Content mit mod.info vorliegt."""
+    d = find_download_dir(modid)
+    return bool(d and os.path.isfile(os.path.join(content_subdir(d), "mod.info")))
+
+
+# Große Workshop-Mods (mehrere hundert MB) scheitern bei anonymem SteamCMD
+# notorisch mit "failed (Failure)" – der Download kommt in Etappen und bricht
+# oft mehrfach ab, bevor er komplett ist. Deshalb mehrere Anläufe mit validate,
+# solange bis der Content vollständig vorliegt.
+DOWNLOAD_ATTEMPTS = 5
+
+
 def install_mod(modid, ark_dir):
-    """Lädt eine Mod (mit einem Retry), entpackt sie und installiert sie."""
+    """Lädt eine Mod (mehrere Anläufe für große Mods), entpackt & installiert sie."""
     log(f"[+] Lade Mod {modid} via SteamCMD ...")
-    downloaded = download_mod(modid)
-    if not downloaded:
-        # zweiter Versuch – fängt gelegentliche Steam-Aussetzer ab
-        log(f"[!] Erster Versuch ohne Erfolg, wiederhole Mod {modid} ...")
-        downloaded = download_mod(modid)
+    ok = False
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        if attempt > 1:
+            log(f"[!] Versuch {attempt}/{DOWNLOAD_ATTEMPTS} für Mod {modid} "
+                f"(große Mods brauchen oft mehrere Anläufe) ...")
+        got = download_mod(modid)
+        # Erfolg = Meldung ODER Content liegt vollständig vor (steamcmd meldet
+        # bei fortgesetzten Downloads nicht immer sauber "Success").
+        if got or mod_content_present(modid):
+            ok = True
+            break
+
+    if not ok and not mod_content_present(modid):
+        raise RuntimeError(
+            f"Nach {DOWNLOAD_ATTEMPTS} Versuchen nicht ladbar (failed) – "
+            "Mod entfernt/privat, oder für sehr große Mods evtl. echter "
+            "Steam-Login nötig (statt anonymous).")
 
     download = find_download_dir(modid)
-    if not downloaded and not (download and os.path.isfile(
-            os.path.join(content_subdir(download), "mod.info"))):
-        # Weder frisch geladen noch bereits im Workshop-Ordner vorhanden.
-        raise RuntimeError(
-            "Von SteamCMD nicht geladen (failed) – Mod entfernt, privat oder "
-            "keine ARK-SE-Workshop-Mod?")
     if not download:
         raise RuntimeError("Heruntergeladene Dateien nicht gefunden.")
     source = content_subdir(download)
