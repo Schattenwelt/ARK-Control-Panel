@@ -130,8 +130,7 @@ def parse_modmeta(path):
 def write_mod_file(dst, modid, maps, meta):
     """Erzeugt die <id>.mod-Datei, die ARK zum Registrieren der Mod braucht."""
     with open(dst, "wb") as f:
-        f.write(struct.pack("<i", int(modid)))          # ModID (int32) ...
-        f.write(b"\x00\x00\x00\x00")                    # ... + 4 Pad-Bytes
+        f.write(struct.pack("<Q", int(modid)))          # ModID als uint64 (8 Bytes)
         write_ue4_string(f, "ModName")
         write_ue4_string(f, "")
         f.write(struct.pack("<i", len(maps)))
