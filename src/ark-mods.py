@@ -198,16 +198,33 @@ def extract_all_z(root):
 def install_mod(modid, ark_dir):
     """Lädt eine Mod, entpackt sie und installiert sie in den Server."""
     log(f"[+] Lade Mod {modid} via SteamCMD ...")
-    subprocess.run(
+    proc = subprocess.run(
         [STEAMCMD, "+login", "anonymous",
          "+workshop_download_item", GAME_APPID, str(modid), "+quit"],
-        check=False,
+        check=False, capture_output=True, text=True,
     )
+    out = (proc.stdout or "") + (proc.stderr or "")
+    # SteamCMD-Zeilen durchreichen, damit sie im Journal sichtbar bleiben
+    for line in out.splitlines():
+        if line.strip():
+            log("    " + line.rstrip())
+
+    # SteamCMD gibt bei nicht (mehr) verfügbaren Mods "Download item ... failed"
+    # zurück – das direkt abfangen, statt später über ein fehlendes Verzeichnis
+    # zu stolpern (irreführende Meldung).
+    lo = out.lower()
+    if "success. downloaded item" not in lo:
+        if "failed" in lo and "download item" in lo:
+            raise RuntimeError(
+                "Von SteamCMD abgelehnt (failed) – Mod entfernt, privat oder "
+                "keine ARK-SE-Workshop-Mod?")
+        raise RuntimeError(
+            "SteamCMD hat die Mod nicht geladen (kein 'Success' in der Ausgabe).")
+
     download = find_download_dir(modid)
     if not download:
         raise RuntimeError(
-            f"Download-Verzeichnis für Mod {modid} nicht gefunden – "
-            f"hat SteamCMD die Mod geladen? (evtl. nicht anonym verfügbar)")
+            "Heruntergeladene Dateien nicht gefunden – Download unvollständig?")
     content = content_subdir(download)
 
     log(f"[+] Entpacke .z-Dateien in {content} ...")
@@ -260,17 +277,27 @@ def main(argv):
 
     log(f"[+] ARK-Verzeichnis: {ark_dir}")
     log(f"[+] Zu synchronisierende Mods: {', '.join(modids)}")
-    failed = []
+    ok, failed = [], []
     for modid in modids:
         try:
             install_mod(modid, ark_dir)
-        except Exception as exc:                         # eine kaputte Mod nicht alles abbrechen lassen
+            ok.append(modid)
+        except Exception as exc:      # eine kaputte Mod nicht die anderen abbrechen lassen
             log(f"[x] Mod {modid} fehlgeschlagen: {exc}")
             failed.append(modid)
 
-    if failed:
-        log(f"[x] Fehlgeschlagen: {', '.join(failed)}")
+    log(f"[+] Bilanz: {len(ok)}/{len(modids)} installiert"
+        + (f", fehlgeschlagen: {', '.join(failed)}" if failed else ""))
+
+    if not ok:
+        # gar nichts installiert -> echter Fehler
+        log("[x] Keine Mod konnte installiert werden.")
         return 1
+    if failed:
+        # teils erfolgreich: als Erfolg werten, damit der gute Teil zählt;
+        # die fehlgeschlagenen IDs stehen oben im Log.
+        log("[!] Fertig – mit übersprungenen Mods (siehe oben). Server neu starten.")
+        return 0
     log("[+] Fertig. Server neu starten, damit die Mods geladen werden.")
     return 0
 
