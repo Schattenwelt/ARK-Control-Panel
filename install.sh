@@ -299,7 +299,7 @@ chmod 640 "$PANEL_DIR/runtime.json" "$PANEL_DIR/maps.json" "$PANEL_DIR/mods.json
 msg "Setze eingeschränkte sudo-Rechte für das Panel ..."
 SUDO_FILE=/etc/sudoers.d/ark-panel
 cat > "$SUDO_FILE" <<'SUDO'
-ark ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now ark.service, /usr/bin/systemctl disable --now ark.service, /usr/bin/systemctl enable ark.service, /usr/bin/systemctl disable ark.service, /usr/bin/systemctl restart ark.service, /usr/bin/systemctl reset-failed ark.service, /usr/bin/systemctl start ark-update.service, /usr/bin/systemctl start ark-mods.service
+ark ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now ark.service, /usr/bin/systemctl disable --now ark.service, /usr/bin/systemctl enable ark.service, /usr/bin/systemctl disable ark.service, /usr/bin/systemctl restart ark.service, /usr/bin/systemctl reset-failed ark.service, /usr/bin/systemctl start ark-update.service, /usr/bin/systemctl start --no-block ark-mods.service
 SUDO
 chmod 440 "$SUDO_FILE"
 visudo -cf "$SUDO_FILE" >/dev/null || die "sudoers-Regel ungültig."

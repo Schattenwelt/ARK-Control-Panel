@@ -742,7 +742,7 @@ def mods_sync():
     if not rt["mods"]:
         flash(t("mods_sync_empty"))
         return redirect(url_for("mods_page"))
-    rc, out = svc("start", MODS_SERVICE)
+    rc, out = svc("start", "--no-block", MODS_SERVICE)
     flash(t("mods_sync_started") if rc == 0 else t("mods_sync_failed", out=out))
     return redirect(url_for("mods_page"))
 
