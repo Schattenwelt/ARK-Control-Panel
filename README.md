@@ -111,8 +111,9 @@ Workflow: add the Workshop ID under **Mods**, click **Sync mods** (wait for it t
 finish — large mods take a while), then restart the server. Load order in the list
 is the load order passed to the server; map mods generally go first.
 
-Leave **auto-managed mods** *off* once you sync manually — on Linux it does not
-install mods reliably and can interfere with the manually installed files.
+The panel does not use `-automanagedmods`: on Linux that flag downloads mods but
+never installs them, so relying on it just leaves you with a modless server. The
+**Sync mods** button is the supported path instead.
 
 > This applies to ARK: **Survival Evolved** (Steam Workshop). ARK: **Survival
 > Ascended** uses a different mod system (CurseForge) and is not supported here.

@@ -150,19 +150,11 @@ TRANSLATIONS = {
     # -- Mods --
     "mods_title": {"de": "Mod-Verwaltung", "en": "Mod management"},
     "mods_intro": {
-        "de": "Trage die Steam-Workshop-IDs der Mods in Ladereihenfolge ein. Sie werden "
-              "beim Start als -mods=… übergeben. Reihenfolge kann für abhängige Mods wichtig sein.",
-        "en": "List the Steam Workshop IDs of your mods in load order. They are passed as "
-              "-mods=… at launch. Order can matter for dependent mods."},
-    "mods_automanaged": {"de": "Mods automatisch verwalten (-automanagedmods)",
-                         "en": "Auto-manage mods (-automanagedmods)"},
-    "mods_automanaged_help": {
-        "de": "Der Server lädt/aktualisiert die Mods beim Start selbst aus dem Workshop. "
-              "Ohne diese Option müssen die Mods manuell im Server-Ordner liegen.",
-        "en": "The server downloads/updates the mods from the Workshop on launch itself. "
-              "Without it, mods must already be present in the server folder."},
-    "mods_automanaged_saved": {"de": "Einstellung gespeichert. Server neu starten.",
-                               "en": "Setting saved. Restart the server."},
+        "de": "Trage die Steam-Workshop-IDs der Mods in Ladereihenfolge ein. Reihenfolge kann "
+              "für abhängige Mods wichtig sein. Nach dem Eintragen unten „Mods synchronisieren“ "
+              "klicken und danach den Server neu starten.",
+        "en": "List the Steam Workshop IDs of your mods in load order. Order can matter for "
+              "dependent mods. After adding them, click “Sync mods” below and restart the server."},
     "mods_add_title": {"de": "Mod hinzufügen", "en": "Add mod"},
     "mods_add_id_ph": {"de": "Workshop-ID (z. B. 731604991)", "en": "Workshop ID (e.g. 731604991)"},
     "mods_add_name_ph": {"de": "Name (optional)", "en": "Name (optional)"},

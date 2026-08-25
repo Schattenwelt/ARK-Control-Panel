@@ -81,7 +81,6 @@ RUNTIME_DEFAULTS = {
     "rcon_port": 27020,
     "public_address": "",   # optionale öffentliche IP / DDNS-Hostname für die Anzeige
     "battleye": True,
-    "automanaged_mods": False,
     "mods": [],
     "extra_args": "",
 }
@@ -817,20 +816,6 @@ def mods_move():
                 mods[i], mods[j] = mods[j], mods[i]
                 rt["mods"] = mods
                 save_runtime(rt)
-    return redirect(url_for("mods_page"))
-
-
-@app.route("/mods/automanaged", methods=["POST"])
-@login_required
-def mods_automanaged():
-    if not check_csrf():
-        flash(t("csrf_invalid"))
-        return redirect(url_for("mods_page"))
-    with _state_lock:
-        rt = load_runtime()
-        rt["automanaged_mods"] = bool(request.form.get("automanaged_mods"))
-        save_runtime(rt)
-    flash(t("mods_automanaged_saved"))
     return redirect(url_for("mods_page"))
 
 

@@ -26,7 +26,6 @@ print("MAXP=" + q(d.get("max_players", 70)))
 print("PORT=" + q(d.get("port", 7777)))
 print("QUERY=" + q(d.get("query_port", 27015)))
 print("RCONP=" + q(d.get("rcon_port", 27020)))
-print("AUTOMODS=" + q("1" if d.get("automanaged_mods") else ""))
 print("BATTLEYE=" + q("1" if d.get("battleye", True) else ""))
 print("MODS=" + q(",".join(str(m) for m in d.get("mods", []) if str(m).isdigit())))
 print("EXTRA=" + q(d.get("extra_args", "")))
@@ -34,7 +33,7 @@ PY
 )"
 else
     MAP="TheIsland"; SESSION="ARK Server"; MAXP=70; PORT=7777; QUERY=27015
-    RCONP=27020; AUTOMODS=""; BATTLEYE="1"; MODS=""; EXTRA=""
+    RCONP=27020; BATTLEYE="1"; MODS=""; EXTRA=""
 fi
 
 # --- ServerAdminPassword aus der INI ziehen (für RCON) ----------------------
@@ -99,7 +98,6 @@ OPTS="${MAP}?listen?SessionName=${SESSION}?MaxPlayers=${MAXP}?Port=${PORT}?Query
 
 # --- Startargumente ----------------------------------------------------------
 ARGS=(-server -log)
-[ -n "$AUTOMODS" ] && ARGS+=(-automanagedmods)
 [ -n "$MODS" ] && ARGS+=("-mods=${MODS}")
 [ -z "$BATTLEYE" ] && ARGS+=(-NoBattlEye)
 if [ -n "$EXTRA" ]; then
@@ -111,5 +109,5 @@ fi
 cd "$(dirname "$BIN")"
 export LD_LIBRARY_PATH="$(dirname "$BIN"):${LD_LIBRARY_PATH:-}"
 
-echo "[ark-launch] Karte=$MAP  Mods=${MODS:-–}  Automanaged=${AUTOMODS:-0}  Port=$PORT/$QUERY  RCON=$RCONP"
+echo "[ark-launch] Karte=$MAP  Mods=${MODS:-–}  Port=$PORT/$QUERY  RCON=$RCONP"
 exec "$BIN" "$OPTS" "${ARGS[@]}"
