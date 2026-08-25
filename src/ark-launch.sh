@@ -38,10 +38,59 @@ else
 fi
 
 # --- ServerAdminPassword aus der INI ziehen (für RCON) ----------------------
+# encoding-bewusst: ARK schreibt die INI beim Beenden als UTF-16, dann würde ein
+# ASCII-grep das Passwort nicht mehr finden (Null-Bytes zwischen den Zeichen).
 ADMINPW=""
 if [ -f "$GUS" ]; then
-    ADMINPW="$(grep -ioP '^\s*ServerAdminPassword\s*=\s*\K.*' "$GUS" 2>/dev/null \
-                | head -n1 | tr -d '\r' || true)"
+    ADMINPW="$(python3 - "$GUS" <<'PY' || true
+import sys
+raw = open(sys.argv[1], "rb").read()
+if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+    enc = "utf-16"
+elif raw[:3] == b"\xef\xbb\xbf":
+    enc = "utf-8-sig"
+else:
+    enc = "utf-8"
+for line in raw.decode(enc, "ignore").splitlines():
+    s = line.strip()
+    if s.lower().startswith("serveradminpassword="):
+        print(s.split("=", 1)[1].strip()); break
+PY
+)"
+fi
+
+# --- ActiveMods in die INI schreiben ----------------------------------------
+# ARK: Survival Evolved aktiviert Mods über ActiveMods= in [ServerSettings],
+# nicht über -mods= allein. ARK schreibt die GameUserSettings.ini beim Beenden
+# neu (als UTF-16!) und räumt dabei ActiveMods weg – deshalb setzen wir es bei
+# JEDEM Start frisch, encoding-bewusst (BOM erkennen), Zeile ersetzend.
+if [ -f "$GUS" ]; then
+    MODS="$MODS" python3 - "$GUS" <<'PY' || echo "[ark-launch] Warnung: ActiveMods konnte nicht gesetzt werden" >&2
+import os, sys
+p = sys.argv[1]
+mods = os.environ.get("MODS", "")
+raw = open(p, "rb").read()
+if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+    enc = "utf-16"
+elif raw[:3] == b"\xef\xbb\xbf":
+    enc = "utf-8-sig"
+else:
+    enc = "utf-8"
+lines = [l for l in raw.decode(enc, "ignore").splitlines()
+         if not l.strip().lower().startswith("activemods=")]
+if mods:  # nur setzen, wenn Mods vorhanden – sonst Zeile weglassen
+    out, placed = [], False
+    for l in lines:
+        out.append(l)
+        if l.strip().lower() == "[serversettings]" and not placed:
+            out.append("ActiveMods=" + mods); placed = True
+    if not placed:
+        out.append("[ServerSettings]"); out.append("ActiveMods=" + mods)
+else:
+    out = lines
+open(p, "w", encoding=enc).write("\n".join(out) + "\n")
+print("[ark-launch] ActiveMods=%s (encoding=%s)" % (mods or "–", enc))
+PY
 fi
 
 # --- ?-Optionsteil zusammenbauen --------------------------------------------

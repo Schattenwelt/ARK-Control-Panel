@@ -70,4 +70,43 @@
   </ul>
   {% endif %}
 </section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('mods_sync_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('mods_sync_hint') }}</p>
+  <form method="post" action="{{ url_for('mods_sync') }}" id="sync-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn primary" type="submit" id="sync-btn" {{ 'disabled' if not mods }}>
+      {{ t('mods_sync_btn') }}
+    </button>
+    <span id="sync-status" class="muted small" data-running="{{ t('mods_sync_running') }}"
+          {% if sync_state == 'active' %}data-active="1"{% endif %}></span>
+  </form>
+</section>
+
+<script>
+(function () {
+  var status = document.getElementById("sync-status");
+  var btn = document.getElementById("sync-btn");
+  if (!status) return;
+  var runningLabel = status.getAttribute("data-running");
+  function poll() {
+    fetch("{{ url_for('mods_sync_status') }}", { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.state === "activating" || d.state === "active") {
+          status.textContent = runningLabel;
+          if (btn) btn.disabled = true;
+          setTimeout(poll, 3000);
+        } else {
+          if (status.textContent) location.reload();
+        }
+      })
+      .catch(function () {});
+  }
+  if (status.getAttribute("data-active")) { status.textContent = runningLabel; if (btn) btn.disabled = true; setTimeout(poll, 3000); }
+  var form = document.getElementById("sync-form");
+  if (form) form.addEventListener("submit", function () { setTimeout(poll, 2000); });
+})();
+</script>
 {% endblock %}

@@ -34,6 +34,7 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
 ARK_DIR = CONF["ark_dir"]
 SERVICE = CONF.get("service", "ark.service")
 UPDATE_SERVICE = CONF.get("update_service", "ark-update.service")
+MODS_SERVICE = CONF.get("mods_service", "ark-mods.service")
 CONFIG_DIR = os.path.join(ARK_DIR, "ShooterGame", "Saved", "Config", "LinuxServer")
 INI_FILES = {
     "gus": os.path.join(CONFIG_DIR, "GameUserSettings.ini"),
@@ -728,7 +729,30 @@ def maps_launch():
 @login_required
 def mods_page():
     rt = load_runtime()
-    return render_template("mods.html", rt=rt, mods=active_mods_view())
+    return render_template("mods.html", rt=rt, mods=active_mods_view(),
+                           sync_state=service_active(MODS_SERVICE))
+
+
+@app.route("/mods/sync", methods=["POST"])
+@login_required
+def mods_sync():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("mods_page"))
+    rt = load_runtime()
+    if not rt["mods"]:
+        flash(t("mods_sync_empty"))
+        return redirect(url_for("mods_page"))
+    rc, out = svc("start", MODS_SERVICE)
+    flash(t("mods_sync_started") if rc == 0 else t("mods_sync_failed", out=out))
+    return redirect(url_for("mods_page"))
+
+
+@app.route("/mods/sync-status")
+@login_required
+def mods_sync_status():
+    return jsonify(state=service_active(MODS_SERVICE),
+                   logs=recent_logs(MODS_SERVICE, 80))
 
 
 @app.route("/mods/add", methods=["POST"])

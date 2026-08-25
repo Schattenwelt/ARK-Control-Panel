@@ -25,9 +25,19 @@ if [ -d "$SAVED" ]; then
 fi
 
 # --- Update ------------------------------------------------------------------
+# Auf die Binary prüfen statt auf den Exit-Code: SteamCMD kann bei leerem Cache
+# ("Missing configuration") trotzdem 0 liefern. Bis zu 5 Versuche.
 echo "Führe SteamCMD-Update aus (AppID $APPID) ..."
-"$STEAMCMD" +force_install_dir "$INSTALL_DIR" \
-    +login anonymous +app_update "$APPID" validate +quit
+ARK_BIN="$INSTALL_DIR/ShooterGame/Binaries/Linux/ShooterGameServer"
+tries=0
+while [ "$tries" -lt 5 ]; do
+    tries=$((tries+1))
+    [ "$tries" -gt 1 ] && { echo "SteamCMD-Versuch $tries ..."; sleep 5; }
+    "$STEAMCMD" +force_install_dir "$INSTALL_DIR" \
+        +login anonymous +app_update "$APPID" validate +quit || true
+    [ -x "$ARK_BIN" ] && break
+done
+[ -x "$ARK_BIN" ] || { echo "FEHLER: Binary nach $tries Versuchen nicht vorhanden." >&2; exit 1; }
 
 # --- steamclient.so für das SDK verlinken (häufige Fehlerquelle) --------------
 SC="$(find "$HOME/.steam" "$HOME/Steam" "$INSTALL_DIR" -name steamclient.so 2>/dev/null | head -n1 || true)"

@@ -1,0 +1,9 @@
+# Panel state / secrets (werden beim Install erzeugt)
+panel.json
+users.json
+runtime.json
+maps.json
+mods.json
+*.pyc
+__pycache__/
+venv/

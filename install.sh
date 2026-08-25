@@ -148,7 +148,8 @@ cp -r "$REPO_DIR/src/app.py" "$REPO_DIR/src/rcon.py" "$REPO_DIR/src/i18n.py" \
       "$REPO_DIR/src/templates" "$REPO_DIR/src/static" "$PANEL_DIR/"
 install -m 0755 "$REPO_DIR/src/ark-launch.sh"  "$ARK_HOME/ark-launch.sh"
 install -m 0755 "$REPO_DIR/src/ark-update.sh"  "$ARK_HOME/ark-update.sh"
-chown "$ARK_USER":"$ARK_USER" "$ARK_HOME/ark-launch.sh" "$ARK_HOME/ark-update.sh"
+install -m 0755 "$REPO_DIR/src/ark-mods.py"    "$ARK_HOME/ark-mods.py"
+chown "$ARK_USER":"$ARK_USER" "$ARK_HOME/ark-launch.sh" "$ARK_HOME/ark-update.sh" "$ARK_HOME/ark-mods.py"
 
 # ------------------------- systemd-Units ------------------------------------
 msg "Erstelle systemd-Services ..."
@@ -194,6 +195,24 @@ ExecStart=/home/ark/ark-update.sh
 TimeoutStartSec=7200
 UNIT
 
+cat > /etc/systemd/system/ark-mods.service <<'UNIT'
+[Unit]
+Description=ARK Mod Sync (SteamCMD download + extract)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ark
+Group=ark
+WorkingDirectory=/home/ark/arkserver
+Environment=ARK_DIR=/home/ark/arkserver
+Environment=RUNTIME=/opt/ark-panel/runtime.json
+# Lädt/entpackt alle Mods aus runtime.json nach ShooterGame/Content/Mods.
+ExecStart=/home/ark/ark-mods.py --from-runtime /opt/ark-panel/runtime.json
+TimeoutStartSec=3600
+UNIT
+
 cat > /etc/systemd/system/ark-panel.service <<'UNIT'
 [Unit]
 Description=ARK Control Panel (Web UI)
@@ -234,6 +253,7 @@ conf = {
     "ark_dir": "/home/ark/arkserver",
     "service": "ark.service",
     "update_service": "ark-update.service",
+    "mods_service": "ark-mods.service",
     "users_path": "/opt/ark-panel/users.json",
     "runtime_path": "/opt/ark-panel/runtime.json",
     "maps_path": "/opt/ark-panel/maps.json",
@@ -279,7 +299,7 @@ chmod 640 "$PANEL_DIR/runtime.json" "$PANEL_DIR/maps.json" "$PANEL_DIR/mods.json
 msg "Setze eingeschränkte sudo-Rechte für das Panel ..."
 SUDO_FILE=/etc/sudoers.d/ark-panel
 cat > "$SUDO_FILE" <<'SUDO'
-ark ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now ark.service, /usr/bin/systemctl disable --now ark.service, /usr/bin/systemctl enable ark.service, /usr/bin/systemctl disable ark.service, /usr/bin/systemctl restart ark.service, /usr/bin/systemctl reset-failed ark.service, /usr/bin/systemctl start ark-update.service
+ark ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now ark.service, /usr/bin/systemctl disable --now ark.service, /usr/bin/systemctl enable ark.service, /usr/bin/systemctl disable ark.service, /usr/bin/systemctl restart ark.service, /usr/bin/systemctl reset-failed ark.service, /usr/bin/systemctl start ark-update.service, /usr/bin/systemctl start ark-mods.service
 SUDO
 chmod 440 "$SUDO_FILE"
 visudo -cf "$SUDO_FILE" >/dev/null || die "sudoers-Regel ungültig."
