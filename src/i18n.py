@@ -224,6 +224,8 @@ TRANSLATIONS = {
                      "en": "Security token invalid, please try again."},
     "srv_started": {"de": "Server gestartet.", "en": "Server started."},
     "srv_stopped": {"de": "Server gestoppt.", "en": "Server stopped."},
+    "srv_stop_failed": {"de": "Server konnte nicht gestoppt werden (läuft noch).",
+                        "en": "Server could not be stopped (still running)."},
     "srv_restarted": {"de": "Server neu gestartet.", "en": "Server restarted."},
     "update_started": {
         "de": "Update gestartet – der Server wird dafür gestoppt. Fortschritt siehst du "

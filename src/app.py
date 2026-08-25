@@ -254,6 +254,21 @@ def svc(*args):
     return run(["sudo", "-n", "systemctl", *args])
 
 
+def stop_service():
+    """ARK-Dienst stoppen und Erfolg am tatsächlichen Zustand messen.
+
+    ARK beendet sich bei SIGTERM (systemctl stop) nicht mit Exit 0, sondern mit
+    SIGABRT. systemd meldet das als 'failed' und 'disable --now' gibt einen
+    Fehlercode zurück – obwohl der Server sauber gestoppt wurde. Deshalb wird
+    hier nicht der Exit-Code ausgewertet, sondern ob der Dienst danach noch
+    läuft. reset-failed räumt den kosmetischen 'failed'-Marker weg (best effort;
+    schlägt ohne passenden sudoers-Eintrag still fehl, ohne den Stop zu stören).
+    """
+    svc("disable", "--now", SERVICE)
+    svc("reset-failed", SERVICE)
+    return service_active(SERVICE) != "active"
+
+
 def recent_logs(name, lines=60):
     rc, out = run(["journalctl", "-u", name, "-n", str(lines),
                    "--no-pager", "-o", "short-iso"])
@@ -579,8 +594,7 @@ def action():
         rc, out = svc("enable", "--now", SERVICE)
         flash(t("srv_started") if rc == 0 else out)
     elif act == "stop":
-        rc, out = svc("disable", "--now", SERVICE)
-        flash(t("srv_stopped") if rc == 0 else out)
+        flash(t("srv_stopped") if stop_service() else t("srv_stop_failed"))
     elif act == "restart":
         svc("enable", SERVICE)
         rc, out = svc("restart", SERVICE)
@@ -887,9 +901,8 @@ def rcon_action():
                 saved = True
         except (RCONError, OSError):
             saved = False
-        rc, out = svc("disable", "--now", SERVICE)
-        if rc != 0:
-            flash(out)
+        if not stop_service():
+            flash(t("srv_stop_failed"))
         elif saved:
             flash(t("save_shutdown_done"))
         else:
