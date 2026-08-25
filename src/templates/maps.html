@@ -106,6 +106,10 @@
       <input name="public_address" value="{{ rt.public_address }}" placeholder="{{ t('launch_public_ph') }}" spellcheck="false">
     </label>
     <label class="field" style="margin-top:12px">
+      <span class="fname">{{ t('launch_serverpw') }}</span>
+      <input name="server_password" value="{{ rt.server_password }}" placeholder="{{ t('launch_serverpw_ph') }}" spellcheck="false" autocomplete="off">
+    </label>
+    <label class="field" style="margin-top:12px">
       <span class="fname">{{ t('launch_extra') }}</span>
       <input name="extra_args" value="{{ rt.extra_args }}" placeholder="{{ t('launch_extra_ph') }}" spellcheck="false">
     </label>

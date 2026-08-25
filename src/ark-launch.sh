@@ -27,13 +27,14 @@ print("PORT=" + q(d.get("port", 7777)))
 print("QUERY=" + q(d.get("query_port", 27015)))
 print("RCONP=" + q(d.get("rcon_port", 27020)))
 print("BATTLEYE=" + q("1" if d.get("battleye", True) else ""))
+print("SRVPW=" + q(d.get("server_password", "")))
 print("MODS=" + q(",".join(str(m) for m in d.get("mods", []) if str(m).isdigit())))
 print("EXTRA=" + q(d.get("extra_args", "")))
 PY
 )"
 else
     MAP="TheIsland"; SESSION="ARK Server"; MAXP=70; PORT=7777; QUERY=27015
-    RCONP=27020; BATTLEYE="1"; MODS=""; EXTRA=""
+    RCONP=27020; BATTLEYE="1"; SRVPW=""; MODS=""; EXTRA=""
 fi
 
 # --- ServerAdminPassword aus der INI ziehen (für RCON) ----------------------
@@ -95,6 +96,7 @@ fi
 # --- ?-Optionsteil zusammenbauen --------------------------------------------
 OPTS="${MAP}?listen?SessionName=${SESSION}?MaxPlayers=${MAXP}?Port=${PORT}?QueryPort=${QUERY}?RCONEnabled=True?RCONPort=${RCONP}"
 [ -n "$ADMINPW" ] && OPTS="${OPTS}?ServerAdminPassword=${ADMINPW}"
+[ -n "$SRVPW" ] && OPTS="${OPTS}?ServerPassword=${SRVPW}"
 
 # --- Startargumente ----------------------------------------------------------
 ARGS=(-server -log)

@@ -139,6 +139,11 @@ TRANSLATIONS = {
         "de": "z. B. ark.meinedomain.de oder öffentliche IP – für die Anzeige im Dashboard",
         "en": "e.g. ark.mydomain.com or public IP – shown on the dashboard",
     },
+    "launch_serverpw": {"de": "Server-Passwort (optional)", "en": "Server password (optional)"},
+    "launch_serverpw_ph": {
+        "de": "Beitrittspasswort – leer lassen für offenen Server",
+        "en": "Join password – leave empty for an open server",
+    },
     "launch_extra": {"de": "Zusätzliche Startargumente", "en": "Extra launch arguments"},
     "launch_extra_ph": {"de": "z. B. -NoTransferFromFiltering -ForceAllowCaveFlyers",
                         "en": "e.g. -NoTransferFromFiltering -ForceAllowCaveFlyers"},

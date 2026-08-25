@@ -81,6 +81,7 @@ RUNTIME_DEFAULTS = {
     "rcon_port": 27020,
     "public_address": "",   # optionale öffentliche IP / DDNS-Hostname für die Anzeige
     "battleye": True,
+    "server_password": "",  # Beitrittspasswort (leer = offener Server)
     "mods": [],
     "extra_args": "",
 }
@@ -699,6 +700,8 @@ def maps_launch():
         session_name = session_name.replace("?", "").replace("\n", "").replace("\r", "")
         public_address = request.form.get("public_address", "").strip()
         public_address = public_address.replace(" ", "").replace("\n", "").replace("\r", "")
+        server_password = request.form.get("server_password", "").strip()
+        server_password = server_password.replace("?", "").replace(" ", "").replace("\n", "").replace("\r", "")
         max_players = int(request.form.get("max_players", "70"))
         port = int(request.form.get("port", "7777"))
         query_port = int(request.form.get("query_port", "27015"))
@@ -714,6 +717,7 @@ def maps_launch():
             "port": port, "query_port": query_port, "rcon_port": rcon_port,
             "public_address": public_address,
             "battleye": bool(request.form.get("battleye")),
+            "server_password": server_password,
             "extra_args": request.form.get("extra_args", "").strip(),
         })
         save_runtime(rt)
