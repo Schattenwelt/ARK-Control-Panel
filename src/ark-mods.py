@@ -195,55 +195,62 @@ def extract_all_z(root):
     return count
 
 
-def install_mod(modid, ark_dir):
-    """Lädt eine Mod, entpackt sie und installiert sie in den Server."""
-    log(f"[+] Lade Mod {modid} via SteamCMD ...")
+def download_mod(modid):
+    """Ruft SteamCMD auf. Gibt True zurück, wenn ein Download-Erfolg gemeldet wurde.
+    Der SteamCMD-Download-Ordner wird NICHT verändert (das erledigt install_mod
+    auf einer Kopie) – so bleibt SteamCMDs Zustand für Folgeläufe intakt."""
     proc = subprocess.run(
         [STEAMCMD, "+login", "anonymous",
          "+workshop_download_item", GAME_APPID, str(modid), "+quit"],
         check=False, capture_output=True, text=True,
     )
-    out = (proc.stdout or "") + (proc.stderr or "")
-    # SteamCMD-Zeilen durchreichen, damit sie im Journal sichtbar bleiben
+    out = ((proc.stdout or "") + (proc.stderr or ""))
     for line in out.splitlines():
         if line.strip():
             log("    " + line.rstrip())
+    return "success. downloaded item" in out.lower()
 
-    # SteamCMD gibt bei nicht (mehr) verfügbaren Mods "Download item ... failed"
-    # zurück – das direkt abfangen, statt später über ein fehlendes Verzeichnis
-    # zu stolpern (irreführende Meldung).
-    lo = out.lower()
-    if "success. downloaded item" not in lo:
-        if "failed" in lo and "download item" in lo:
-            raise RuntimeError(
-                "Von SteamCMD abgelehnt (failed) – Mod entfernt, privat oder "
-                "keine ARK-SE-Workshop-Mod?")
-        raise RuntimeError(
-            "SteamCMD hat die Mod nicht geladen (kein 'Success' in der Ausgabe).")
+
+def install_mod(modid, ark_dir):
+    """Lädt eine Mod (mit einem Retry), entpackt sie und installiert sie."""
+    log(f"[+] Lade Mod {modid} via SteamCMD ...")
+    downloaded = download_mod(modid)
+    if not downloaded:
+        # zweiter Versuch – fängt gelegentliche Steam-Aussetzer ab
+        log(f"[!] Erster Versuch ohne Erfolg, wiederhole Mod {modid} ...")
+        downloaded = download_mod(modid)
 
     download = find_download_dir(modid)
-    if not download:
+    if not downloaded and not (download and os.path.isfile(
+            os.path.join(content_subdir(download), "mod.info"))):
+        # Weder frisch geladen noch bereits im Workshop-Ordner vorhanden.
         raise RuntimeError(
-            "Heruntergeladene Dateien nicht gefunden – Download unvollständig?")
-    content = content_subdir(download)
-
-    log(f"[+] Entpacke .z-Dateien in {content} ...")
-    n = extract_all_z(content)
-    log(f"[+] {n} Datei(en) entpackt.")
-
-    mod_info = os.path.join(content, "mod.info")
-    if not os.path.isfile(mod_info):
+            "Von SteamCMD nicht geladen (failed) – Mod entfernt, privat oder "
+            "keine ARK-SE-Workshop-Mod?")
+    if not download:
+        raise RuntimeError("Heruntergeladene Dateien nicht gefunden.")
+    source = content_subdir(download)
+    if not os.path.isfile(os.path.join(source, "mod.info")):
         raise RuntimeError(f"mod.info fehlt für Mod {modid} – Download unvollständig?")
-    maps = parse_mod_info(mod_info)
-    meta_path = os.path.join(content, "modmeta.info")
-    meta = parse_modmeta(meta_path) if os.path.isfile(meta_path) else []
 
     mods_root = os.path.join(ark_dir, "ShooterGame", "Content", "Mods")
     os.makedirs(mods_root, exist_ok=True)
     target = os.path.join(mods_root, str(modid))
+
+    # WICHTIG: erst in den Zielordner KOPIEREN, dann DORT entpacken. Niemals im
+    # SteamCMD-Download-Ordner löschen/entpacken – das zerstört dessen Zustand
+    # ("Missing game files"), was Folge-Downloads scheitern lässt.
     if os.path.isdir(target):
         shutil.rmtree(target)
-    shutil.copytree(content, target)
+    shutil.copytree(source, target)
+
+    log(f"[+] Entpacke .z-Dateien in {target} ...")
+    n = extract_all_z(target)
+    log(f"[+] {n} Datei(en) entpackt.")
+
+    maps = parse_mod_info(os.path.join(target, "mod.info"))
+    meta_path = os.path.join(target, "modmeta.info")
+    meta = parse_modmeta(meta_path) if os.path.isfile(meta_path) else []
     write_mod_file(os.path.join(mods_root, f"{modid}.mod"), modid, maps, meta)
     log(f"[+] Mod {modid} installiert -> {target}")
 
