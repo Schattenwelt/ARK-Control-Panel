@@ -37,7 +37,10 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><h2>{{ t('res_title') }}</h2></div>
+  <div class="panel-head res-head">
+    <h2>{{ t('res_title') }}</h2>
+    <span class="res-version-tag mono" id="res-version-val"></span>
+  </div>
   <div class="res-grid">
     <div class="res-item">
       <div class="res-top"><span class="res-label">{{ t('res_cpu') }}</span>
@@ -53,10 +56,6 @@
       <div class="res-top"><span class="res-label">{{ t('res_disk') }}</span>
         <span class="res-val mono" id="res-disk-val">–</span></div>
       <div class="res-bar"><div class="res-bar-fill" id="res-disk-bar"></div></div>
-    </div>
-    <div class="res-item res-version">
-      <div class="res-top"><span class="res-label">{{ t('res_version') }}</span>
-        <span class="res-val mono" id="res-version-val">–</span></div>
     </div>
   </div>
 </section>
@@ -206,7 +205,7 @@ function renderStats(s) {
     setBar('res-disk-bar', 'res-disk-val', s.disk_pct,
            s.disk_used + ' / ' + s.disk_total + ' GB');
   const vv = document.getElementById('res-version-val');
-  if (vv) vv.textContent = s.version ? ('v' + s.version) : '–';
+  if (vv) vv.textContent = s.version ? ('v' + s.version) : '';
 }
 
 const playersEl = document.getElementById('players');
