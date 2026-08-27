@@ -465,3 +465,14 @@ input:focus, textarea:focus {
   background: var(--blue); transition: width .4s ease;
 }
 .sync-failed { color: var(--warn, #e0a030); }
+
+/* Ressourcen-Monitor */
+.res-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.res-item { min-width: 0; }
+.res-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.res-label { font-weight: 600; }
+.res-val { color: var(--muted); font-size: .9em; }
+.res-bar { height: 8px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.08); }
+.res-bar-fill { height: 100%; width: 0%; border-radius: 6px; background: var(--blue); transition: width .5s ease, background .3s ease; }
+.res-bar-fill.warm { background: var(--warn); }
+.res-bar-fill.hot  { background: var(--danger, #e0533a); }

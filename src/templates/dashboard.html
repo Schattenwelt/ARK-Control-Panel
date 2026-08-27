@@ -37,6 +37,31 @@
 </section>
 
 <section class="panel">
+  <div class="panel-head"><h2>{{ t('res_title') }}</h2></div>
+  <div class="res-grid">
+    <div class="res-item">
+      <div class="res-top"><span class="res-label">{{ t('res_cpu') }}</span>
+        <span class="res-val mono" id="res-cpu-val">–</span></div>
+      <div class="res-bar"><div class="res-bar-fill" id="res-cpu-bar"></div></div>
+    </div>
+    <div class="res-item">
+      <div class="res-top"><span class="res-label">{{ t('res_mem') }}</span>
+        <span class="res-val mono" id="res-mem-val">–</span></div>
+      <div class="res-bar"><div class="res-bar-fill" id="res-mem-bar"></div></div>
+    </div>
+    <div class="res-item">
+      <div class="res-top"><span class="res-label">{{ t('res_disk') }}</span>
+        <span class="res-val mono" id="res-disk-val">–</span></div>
+      <div class="res-bar"><div class="res-bar-fill" id="res-disk-bar"></div></div>
+    </div>
+    <div class="res-item">
+      <div class="res-top"><span class="res-label">{{ t('res_server') }}</span>
+        <span class="res-val mono" id="res-server-val">–</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
   <div class="panel-head">
     <h2>{{ t('connect_title') }}</h2>
     {% if connect_kind == 'auto' %}<span class="addr-kind auto">{{ t('connect_kind_auto') }}</span>
@@ -156,7 +181,34 @@ async function poll() {
       updLog.textContent = u.logs;
       updLog.scrollTop = updLog.scrollHeight;
     }
+    if (d.stats) renderStats(d.stats);
   } catch (e) { /* kurz kein Netz */ }
+}
+
+function setBar(barId, valId, pct, text) {
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  if (val) val.textContent = text;
+  if (bar && pct != null) {
+    bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    bar.classList.toggle('hot', pct >= 90);
+    bar.classList.toggle('warm', pct >= 75 && pct < 90);
+  }
+}
+
+function renderStats(s) {
+  setBar('res-cpu-bar', 'res-cpu-val',
+         s.cpu, s.cpu == null ? '…' : s.cpu + ' %');
+  if (s.mem_total != null)
+    setBar('res-mem-bar', 'res-mem-val', s.mem_pct,
+           s.mem_used + ' / ' + s.mem_total + ' MB (' + s.mem_pct + ' %)');
+  if (s.disk_total != null)
+    setBar('res-disk-bar', 'res-disk-val', s.disk_pct,
+           s.disk_used + ' / ' + s.disk_total + ' GB (' + s.disk_pct + ' %)');
+  const sv = document.getElementById('res-server-val');
+  if (sv) sv.textContent = (s.server_mem != null)
+    ? (s.server_mem >= 1024 ? (s.server_mem/1024).toFixed(1)+' GB' : s.server_mem+' MB')
+    : '{{ t('res_server_off') }}';
 }
 
 const playersEl = document.getElementById('players');
@@ -227,6 +279,7 @@ async function pollPlayers() {
 
 poll();
 pollPlayers();
+{% if stats %}renderStats({{ stats|tojson }});{% endif %}
 setInterval(poll, 4000);
 setInterval(pollPlayers, 8000);
 document.addEventListener('DOMContentLoaded', () => logEl.scrollTop = logEl.scrollHeight);

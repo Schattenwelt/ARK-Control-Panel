@@ -543,6 +543,107 @@ def logout():
 # ---------------------------------------------------------------------------
 # Routen: Dashboard
 # ---------------------------------------------------------------------------
+_cpu_prev = {}          # gecachter /proc/stat-Snapshot für nicht-blockierende CPU%-Messung
+_cpu_lock = threading.Lock()
+
+
+def _read_cpu_times():
+    """Gesamt- und Idle-Jiffies aus /proc/stat (erste Zeile)."""
+    try:
+        with open("/proc/stat") as f:
+            parts = f.readline().split()
+    except OSError:
+        return None
+    if len(parts) < 5 or parts[0] != "cpu":
+        return None
+    vals = [int(x) for x in parts[1:]]
+    idle = vals[3] + (vals[4] if len(vals) > 4 else 0)   # idle + iowait
+    total = sum(vals)
+    return total, idle
+
+
+def _cpu_percent():
+    """CPU-Auslastung in % über das Delta zum letzten Aufruf (nicht blockierend).
+    Beim ersten Aufruf noch kein Delta -> None."""
+    cur = _read_cpu_times()
+    if not cur:
+        return None
+    with _cpu_lock:
+        prev = _cpu_prev.get("v")
+        _cpu_prev["v"] = cur
+    if not prev:
+        return None
+    dtotal = cur[0] - prev[0]
+    didle = cur[1] - prev[1]
+    if dtotal <= 0:
+        return None
+    return round((1.0 - didle / dtotal) * 100.0, 1)
+
+
+def _mem_info():
+    """(genutzt_MB, gesamt_MB, prozent) aus /proc/meminfo."""
+    info = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                info[k.strip()] = int(v.split()[0])   # in kB
+    except OSError:
+        return None
+    total = info.get("MemTotal", 0)
+    avail = info.get("MemAvailable", info.get("MemFree", 0))
+    if not total:
+        return None
+    used = total - avail
+    return round(used / 1024), round(total / 1024), round(used / total * 100, 1)
+
+
+def _disk_info(path):
+    """(genutzt_GB, gesamt_GB, prozent) für den Mount von path."""
+    try:
+        st = os.statvfs(path)
+    except OSError:
+        return None
+    total = st.f_blocks * st.f_frsize
+    free = st.f_bavail * st.f_frsize
+    if not total:
+        return None
+    used = total - free
+    return round(used / 1024**3, 1), round(total / 1024**3, 1), round(used / total * 100, 1)
+
+
+def _server_mem_mb():
+    """RAM-Verbrauch des ARK-Serverprozesses (MainPID der Unit) in MB, oder None."""
+    _rc, out = run(["systemctl", "show", "-p", "MainPID", "--value", SERVICE])
+    pid = out.strip()
+    if not pid or pid == "0":
+        return None
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024)   # kB -> MB
+    except OSError:
+        return None
+    return None
+
+
+def system_stats():
+    """Sammelt CPU/RAM/Disk/Server-RAM für den Ressourcen-Monitor."""
+    cpu = _cpu_percent()
+    mem = _mem_info()
+    disk = _disk_info(ARK_DIR)
+    stats = {"cpu": cpu}
+    if mem:
+        stats.update(mem_used=mem[0], mem_total=mem[1], mem_pct=mem[2])
+    if disk:
+        stats.update(disk_used=disk[0], disk_total=disk[1], disk_pct=disk[2])
+    srv = _server_mem_mb()
+    if srv is not None:
+        stats["server_mem"] = srv
+    return stats
+
+
 @app.route("/")
 @login_required
 def dashboard():
@@ -566,6 +667,7 @@ def dashboard():
         active_map=map_name_for(rt["map"]),
         mods_count=len(rt["mods"]),
         service=SERVICE,
+        stats=system_stats(),
         connect_ip=ip,
         connect_query=rt.get("query_port", 27015),
         connect_game=rt.get("port", 7777),
@@ -580,6 +682,7 @@ def status():
         server=service_active(SERVICE),
         update=service_active(UPDATE_SERVICE),
         enabled=service_enabled(SERVICE),
+        stats=system_stats(),
         logs=recent_logs(SERVICE, 60),
     )
 
