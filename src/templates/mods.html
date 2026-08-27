@@ -72,31 +72,58 @@
     <span id="sync-status" class="muted small" data-running="{{ t('mods_sync_running') }}"
           {% if sync_state == 'active' %}data-active="1"{% endif %}></span>
   </form>
+  <div id="sync-progress" class="sync-progress" hidden>
+    <div class="sync-bar"><div id="sync-bar-fill" class="sync-bar-fill"></div></div>
+  </div>
 </section>
 
 <script>
 (function () {
   var status = document.getElementById("sync-status");
   var btn = document.getElementById("sync-btn");
+  var progWrap = document.getElementById("sync-progress");
+  var barFill = document.getElementById("sync-bar-fill");
   if (!status) return;
   var runningLabel = status.getAttribute("data-running");
+
+  function showProgress(text) {
+    if (!text) return;
+    status.textContent = text;
+    // "Mod 3/7" -> Balken auf 3/7 setzen
+    var m = text.match(/(\d+)\s*\/\s*(\d+)/);
+    if (m && progWrap && barFill) {
+      progWrap.hidden = false;
+      var pct = Math.round((parseInt(m[1], 10) / parseInt(m[2], 10)) * 100);
+      barFill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+    }
+  }
+
   function poll() {
     fetch("{{ url_for('mods_sync_status') }}", { headers: { "Accept": "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.state === "activating" || d.state === "active") {
-          status.textContent = runningLabel;
+          showProgress(d.progress || runningLabel);
           if (btn) btn.disabled = true;
-          setTimeout(poll, 3000);
+          setTimeout(poll, 2000);
         } else {
-          if (status.textContent) location.reload();
+          // Lauf beendet: letzten Fortschritt (Bilanz) kurz zeigen, dann neu laden
+          if (d.progress) { showProgress(d.progress); if (barFill) barFill.style.width = "100%"; }
+          if (status.textContent) { setTimeout(function () { location.reload(); }, 1500); }
         }
       })
       .catch(function () {});
   }
-  if (status.getAttribute("data-active")) { status.textContent = runningLabel; if (btn) btn.disabled = true; setTimeout(poll, 3000); }
+
+  if (status.getAttribute("data-active")) {
+    showProgress(runningLabel); if (btn) btn.disabled = true; setTimeout(poll, 2000);
+  }
   var form = document.getElementById("sync-form");
-  if (form) form.addEventListener("submit", function () { setTimeout(poll, 2000); });
+  if (form) form.addEventListener("submit", function () {
+    if (btn) btn.disabled = true;
+    showProgress(runningLabel);
+    setTimeout(poll, 1500);
+  });
 })();
 </script>
 {% endblock %}

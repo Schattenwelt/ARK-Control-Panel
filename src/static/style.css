@@ -453,3 +453,14 @@ input:focus, textarea:focus {
 }
 .addr-kind.auto { color: #05121d; background: var(--blue); border-color: var(--blue); }
 .addr-kind.local { color: #d38b2f; border-color: #d38b2f; }
+
+/* Mod-Sync Fortschrittsbalken */
+.sync-progress { margin-top: 12px; }
+.sync-bar {
+  height: 8px; border-radius: 6px; overflow: hidden;
+  background: rgba(255,255,255,.08);
+}
+.sync-bar-fill {
+  height: 100%; width: 0%; border-radius: 6px;
+  background: var(--blue); transition: width .4s ease;
+}

@@ -172,6 +172,15 @@ TRANSLATIONS = {
     },
     "mods_sync_btn": {"de": "Mods synchronisieren", "en": "Sync mods"},
     "mods_sync_running": {"de": "Synchronisierung läuft …", "en": "Sync running …"},
+    "mods_phase_download": {"de": "lädt", "en": "downloading"},
+    "mods_phase_extract": {"de": "entpackt", "en": "extracting"},
+    "mods_phase_installed": {"de": "installiert", "en": "installed"},
+    "mods_progress_running": {
+        "de": "Mod {pos}/{total} ({mod}) – {phase} …",
+        "en": "Mod {pos}/{total} ({mod}) – {phase} …"},
+    "mods_progress_done": {
+        "de": "Fertig: {ok}/{total} installiert.",
+        "en": "Done: {ok}/{total} installed."},
     "mods_sync_started": {"de": "Mod-Synchronisierung gestartet. Das kann einige Minuten dauern.",
                           "en": "Mod sync started. This may take a few minutes."},
     "mods_sync_failed": {"de": "Synchronisierung konnte nicht gestartet werden: {out}",

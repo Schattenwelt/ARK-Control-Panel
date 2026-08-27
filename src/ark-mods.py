@@ -149,15 +149,41 @@ def write_mod_file(dst, modid, maps, meta):
 # --------------------------------------------------------------------------- #
 #  Download + Installation
 # --------------------------------------------------------------------------- #
-def find_download_dir(modid):
-    """Findet das von SteamCMD heruntergeladene Workshop-Verzeichnis der Mod."""
+def steam_bases():
+    """Mögliche Steam-Basisverzeichnisse (je nach Distribution/Setup)."""
     home = os.path.expanduser("~")
-    bases = [
+    return [
         os.path.join(home, ".steam", "steam"),
         os.path.join(home, ".steam"),
         os.path.join(home, "Steam"),
         os.path.join(home, ".local", "share", "Steam"),
     ]
+
+
+def clean_steam_scratch():
+    """Räumt SteamCMDs Zwischenstand (downloads/temp) weg – NICHT den content-
+    Ordner. Verhindert den festgefahrenen 'Missing game files'-Zustand, der
+    entsteht, wenn ein vorheriger Lauf Reste hinterlassen hat. content bleibt
+    erhalten, damit SteamCMD bereits geladene Mods inkrementell aktualisieren
+    kann statt alles neu zu ziehen."""
+    removed = 0
+    for base in steam_bases():
+        for sub in ("downloads", "temp"):
+            path = os.path.join(base, "steamapps", "workshop", sub)
+            if os.path.isdir(path):
+                try:
+                    shutil.rmtree(path)
+                    removed += 1
+                except OSError as exc:
+                    log(f"[!] Konnte {path} nicht entfernen: {exc}")
+    if removed:
+        log(f"[+] SteamCMD-Zwischenstand bereinigt ({removed} Ordner).")
+
+
+def find_download_dir(modid):
+    """Findet das von SteamCMD heruntergeladene Workshop-Verzeichnis der Mod."""
+    home = os.path.expanduser("~")
+    bases = steam_bases()
     rel = os.path.join("steamapps", "workshop", "content", GAME_APPID, str(modid))
     for base in bases:
         cand = os.path.join(base, rel)
@@ -224,13 +250,14 @@ def mod_content_present(modid):
 DOWNLOAD_ATTEMPTS = 5
 
 
-def install_mod(modid, ark_dir):
+def install_mod(modid, ark_dir, pos=None, total=None):
     """Lädt eine Mod (mehrere Anläufe für große Mods), entpackt & installiert sie."""
-    log(f"[+] Lade Mod {modid} via SteamCMD ...")
+    tag = f"[{pos}/{total}] " if pos and total else ""
+    log(f"[+] {tag}Lade Mod {modid} via SteamCMD ...")
     ok = False
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         if attempt > 1:
-            log(f"[!] Versuch {attempt}/{DOWNLOAD_ATTEMPTS} für Mod {modid} "
+            log(f"[!] {tag}Versuch {attempt}/{DOWNLOAD_ATTEMPTS} für Mod {modid} "
                 f"(große Mods brauchen oft mehrere Anläufe) ...")
         got = download_mod(modid)
         # Erfolg = Meldung ODER Content liegt vollständig vor (steamcmd meldet
@@ -263,15 +290,15 @@ def install_mod(modid, ark_dir):
         shutil.rmtree(target)
     shutil.copytree(source, target)
 
-    log(f"[+] Entpacke .z-Dateien in {target} ...")
+    log(f"[+] {tag}Entpacke Mod {modid} ...")
     n = extract_all_z(target)
-    log(f"[+] {n} Datei(en) entpackt.")
+    log(f"[+] {tag}{n} Datei(en) entpackt.")
 
     maps = parse_mod_info(os.path.join(target, "mod.info"))
     meta_path = os.path.join(target, "modmeta.info")
     meta = parse_modmeta(meta_path) if os.path.isfile(meta_path) else []
     write_mod_file(os.path.join(mods_root, f"{modid}.mod"), modid, maps, meta)
-    log(f"[+] Mod {modid} installiert -> {target}")
+    log(f"[+] {tag}Mod {modid} installiert.")
 
 
 def load_ids_from_runtime(path):
@@ -301,12 +328,15 @@ def main(argv):
         log(f"[x] SteamCMD nicht gefunden ({STEAMCMD}). STEAMCMD-Umgebungsvariable setzen.")
         return 1
 
+    total = len(modids)
     log(f"[+] ARK-Verzeichnis: {ark_dir}")
     log(f"[+] Zu synchronisierende Mods: {', '.join(modids)}")
+    clean_steam_scratch()   # verhindert festgefahrenen 'Missing game files'-Zustand
     ok, failed = [], []
-    for modid in modids:
+    for idx, modid in enumerate(modids, 1):
+        log(f"[>] Fortschritt: Mod {idx}/{total} ({modid})")
         try:
-            install_mod(modid, ark_dir)
+            install_mod(modid, ark_dir, pos=idx, total=total)
             ok.append(modid)
         except Exception as exc:      # eine kaputte Mod nicht die anderen abbrechen lassen
             log(f"[x] Mod {modid} fehlgeschlagen: {exc}")

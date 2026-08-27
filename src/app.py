@@ -754,8 +754,44 @@ def mods_sync():
 @app.route("/mods/sync-status")
 @login_required
 def mods_sync_status():
+    logs = recent_logs(MODS_SERVICE, 80)
     return jsonify(state=service_active(MODS_SERVICE),
-                   logs=recent_logs(MODS_SERVICE, 80))
+                   progress=parse_sync_progress(logs),
+                   logs=logs)
+
+
+def parse_sync_progress(logs):
+    """Zieht den aktuellen Fortschritt aus den Log-Zeilen des Sync-Skripts.
+    Gibt einen kurzen, menschenlesbaren Text zurück (oder '')."""
+    import re
+    cur = pos = total = None
+    done = False
+    last_action = ""
+    for line in logs.splitlines():
+        m = re.search(r"Fortschritt: Mod (\d+)/(\d+) \((\d+)\)", line)
+        if m:
+            pos, total, cur = m.group(1), m.group(2), m.group(3)
+            last_action = "download"
+            continue
+        if "Entpacke Mod" in line:
+            last_action = "extract"
+        elif "installiert." in line and "Mod" in line:
+            last_action = "installed"
+        elif "Bilanz:" in line:
+            done = True
+            mb = re.search(r"Bilanz: (\d+)/(\d+)", line)
+            if mb:
+                pos, total = mb.group(1), mb.group(2)
+    if done and total:
+        return t("mods_progress_done", ok=pos, total=total)
+    if pos and total:
+        phase = {
+            "download": t("mods_phase_download"),
+            "extract": t("mods_phase_extract"),
+            "installed": t("mods_phase_installed"),
+        }.get(last_action, t("mods_phase_download"))
+        return t("mods_progress_running", pos=pos, total=total, mod=cur or "", phase=phase)
+    return ""
 
 
 @app.route("/mods/add", methods=["POST"])
