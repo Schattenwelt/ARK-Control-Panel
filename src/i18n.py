@@ -181,6 +181,12 @@ TRANSLATIONS = {
     "mods_progress_done": {
         "de": "Fertig: {ok}/{total} installiert.",
         "en": "Done: {ok}/{total} installed."},
+    "mods_last_ok": {
+        "de": "Zuletzt synchronisiert: {ok}/{total} installiert ({when} Uhr).",
+        "en": "Last sync: {ok}/{total} installed ({when})."},
+    "mods_last_failed": {
+        "de": "Fehlgeschlagen: {failed}",
+        "en": "Failed: {failed}"},
     "mods_sync_started": {"de": "Mod-Synchronisierung gestartet. Das kann einige Minuten dauern.",
                           "en": "Mod sync started. This may take a few minutes."},
     "mods_sync_failed": {"de": "Synchronisierung konnte nicht gestartet werden: {out}",

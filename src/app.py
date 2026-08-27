@@ -733,7 +733,32 @@ def maps_launch():
 def mods_page():
     rt = load_runtime()
     return render_template("mods.html", rt=rt, mods=active_mods_view(),
-                           sync_state=service_active(MODS_SERVICE))
+                           sync_state=service_active(MODS_SERVICE),
+                           last_sync=read_last_sync())
+
+
+LAST_SYNC_PATH = os.path.join(PANEL_DIR, "last_sync.json")
+
+
+def read_last_sync():
+    """Liest das letzte Sync-Ergebnis (last_sync.json) für die dauerhafte Anzeige.
+    Gibt ein Dict mit ok/total/failed/when (lesbarer Zeitpunkt) zurück, oder None."""
+    try:
+        with open(LAST_SYNC_PATH) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    ts = d.get("time")
+    when = ""
+    if ts:
+        import time
+        when = time.strftime("%d.%m. %H:%M", time.localtime(ts))
+    return {
+        "ok": d.get("ok", 0),
+        "total": d.get("total", 0),
+        "failed": d.get("failed", []),
+        "when": when,
+    }
 
 
 @app.route("/mods/sync", methods=["POST"])

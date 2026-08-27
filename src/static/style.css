@@ -464,3 +464,4 @@ input:focus, textarea:focus {
   height: 100%; width: 0%; border-radius: 6px;
   background: var(--blue); transition: width .4s ease;
 }
+.sync-failed { color: var(--warn, #e0a030); }

@@ -75,6 +75,14 @@
   <div id="sync-progress" class="sync-progress" hidden>
     <div class="sync-bar"><div id="sync-bar-fill" class="sync-bar-fill"></div></div>
   </div>
+  {% if last_sync %}
+  <p class="muted small sync-last" style="margin-top:12px">
+    {{ t('mods_last_ok', ok=last_sync.ok, total=last_sync.total, when=last_sync.when) }}
+    {% if last_sync.failed %}
+      <br><span class="sync-failed">{{ t('mods_last_failed', failed=last_sync.failed|join(', ')) }}</span>
+    {% endif %}
+  </p>
+  {% endif %}
 </section>
 
 <script>

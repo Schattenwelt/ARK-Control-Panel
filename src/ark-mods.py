@@ -307,14 +307,37 @@ def load_ids_from_runtime(path):
     return [str(m) for m in data.get("mods", [])]
 
 
+def write_sync_status(runtime_path, ok, failed):
+    """Schreibt das Sync-Ergebnis als last_sync.json neben die runtime.json,
+    damit das Panel es dauerhaft anzeigen kann (auch nach Reload)."""
+    if not runtime_path:
+        return
+    import time
+    state_path = os.path.join(os.path.dirname(os.path.abspath(runtime_path)),
+                              "last_sync.json")
+    data = {
+        "time": int(time.time()),
+        "ok": len(ok),
+        "total": len(ok) + len(failed),
+        "failed": failed,
+    }
+    try:
+        with open(state_path, "w") as f:
+            json.dump(data, f)
+    except OSError as exc:
+        log(f"[!] Konnte Sync-Status nicht schreiben: {exc}")
+
+
 def main(argv):
     ark_dir = os.environ.get("ARK_DIR", "/home/ark/arkserver")
     args = list(argv)
+    runtime_path = os.environ.get("RUNTIME")   # für die Status-Datei
 
     if args and args[0] == "--from-runtime":
         if len(args) < 2:
             log("[x] --from-runtime braucht einen Pfad zur runtime.json")
             return 2
+        runtime_path = args[1]
         modids = load_ids_from_runtime(args[1])
     else:
         modids = args
@@ -344,6 +367,7 @@ def main(argv):
 
     log(f"[+] Bilanz: {len(ok)}/{len(modids)} installiert"
         + (f", fehlgeschlagen: {', '.join(failed)}" if failed else ""))
+    write_sync_status(runtime_path, ok, failed)
 
     if not ok:
         # gar nichts installiert -> echter Fehler
