@@ -54,10 +54,9 @@
         <span class="res-val mono" id="res-disk-val">–</span></div>
       <div class="res-bar"><div class="res-bar-fill" id="res-disk-bar"></div></div>
     </div>
-    <div class="res-item">
-      <div class="res-top"><span class="res-label">{{ t('res_server') }}</span>
-        <span class="res-val mono" id="res-server-val">–</span></div>
-      <div class="res-bar"><div class="res-bar-fill" id="res-server-bar"></div></div>
+    <div class="res-item res-version">
+      <div class="res-top"><span class="res-label">{{ t('res_version') }}</span>
+        <span class="res-val mono" id="res-version-val">–</span></div>
     </div>
   </div>
 </section>
@@ -206,19 +205,8 @@ function renderStats(s) {
   if (s.disk_total != null)
     setBar('res-disk-bar', 'res-disk-val', s.disk_pct,
            s.disk_used + ' / ' + s.disk_total + ' GB');
-  const sv = document.getElementById('res-server-val');
-  const svBar = document.getElementById('res-server-bar');
-  if (s.server_mem != null) {
-    if (sv) sv.textContent = (s.server_mem/1024).toFixed(1) + ' GB';
-    // Server-Balken zeigt den Anteil am Gesamt-RAM
-    if (svBar && s.mem_total) {
-      var pct = Math.round(s.server_mem / s.mem_total * 100);
-      svBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
-    }
-  } else {
-    if (sv) sv.textContent = '{{ t('res_server_off') }}';
-    if (svBar) svBar.style.width = '0%';
-  }
+  const vv = document.getElementById('res-version-val');
+  if (vv) vv.textContent = s.version ? ('v' + s.version) : '–';
 }
 
 const playersEl = document.getElementById('players');

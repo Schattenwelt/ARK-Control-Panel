@@ -612,24 +612,48 @@ def _disk_info(path):
     return round(used / 1024**3, 1), round(total / 1024**3, 1), round(used / total * 100, 1)
 
 
-def _server_mem_mb():
-    """RAM-Verbrauch des ARK-Serverprozesses (MainPID der Unit) in MB, oder None."""
-    _rc, out = run(["systemctl", "show", "-p", "MainPID", "--value", SERVICE])
-    pid = out.strip()
-    if not pid or pid == "0":
-        return None
+_ark_version_cache = {"v": None, "t": 0}
+
+
+def ark_version():
+    """Liest die ARK-Serverversion aus dem Log (Zeile 'ARK Version: X').
+    Gecacht (60s), da sich die Version nur bei Update/Neustart ändert."""
+    now = time.time()
+    if _ark_version_cache["v"] and now - _ark_version_cache["t"] < 60:
+        return _ark_version_cache["v"]
+    logs_dir = os.path.join(ARK_DIR, "ShooterGame", "Saved", "Logs")
+    candidates = []
+    active = os.path.join(logs_dir, "ShooterGame.log")
+    if os.path.isfile(active):
+        candidates.append(active)
     try:
-        with open(f"/proc/{pid}/status") as f:
-            for line in f:
-                if line.startswith("VmRSS:"):
-                    return round(int(line.split()[1]) / 1024)   # kB -> MB
+        backups = sorted(
+            (os.path.join(logs_dir, f) for f in os.listdir(logs_dir)
+             if f.startswith("ShooterGame-backup-") and f.endswith(".log")),
+            key=os.path.getmtime, reverse=True)
+        candidates.extend(backups[:3])   # aktives + die letzten Backups
     except OSError:
-        return None
-    return None
+        pass
+    ver = None
+    for path in candidates:
+        try:
+            with open(path, "r", errors="ignore") as f:
+                for line in f:
+                    m = re.search(r"ARK Version:\s*([\d.]+)", line)
+                    if m:
+                        ver = m.group(1)
+                        break
+        except OSError:
+            continue
+        if ver:
+            break
+    if ver:
+        _ark_version_cache.update(v=ver, t=now)
+    return ver
 
 
 def system_stats():
-    """Sammelt CPU/RAM/Disk/Server-RAM für den Ressourcen-Monitor."""
+    """Sammelt CPU/RAM/Disk für den Ressourcen-Monitor + ARK-Version."""
     cpu = _cpu_percent()
     mem = _mem_info()
     disk = _disk_info(ARK_DIR)
@@ -638,9 +662,9 @@ def system_stats():
         stats.update(mem_used=mem[0], mem_total=mem[1], mem_pct=mem[2])
     if disk:
         stats.update(disk_used=disk[0], disk_total=disk[1], disk_pct=disk[2])
-    srv = _server_mem_mb()
-    if srv is not None:
-        stats["server_mem"] = srv
+    ver = ark_version()
+    if ver:
+        stats["version"] = ver
     return stats
 
 
@@ -875,7 +899,10 @@ def mods_sync():
         flash(t("mods_sync_empty"))
         return redirect(url_for("mods_page"))
     rc, out = svc("start", "--no-block", MODS_SERVICE)
-    flash(t("mods_sync_started") if rc == 0 else t("mods_sync_failed", out=out))
+    # Kein "gestartet"-Hinweis mehr – die Live-Statusanzeige übernimmt das.
+    # Nur einen echten Startfehler (sudo/systemctl) melden, den die Anzeige nicht zeigt.
+    if rc != 0:
+        flash(t("mods_sync_failed", out=out))
     return redirect(url_for("mods_page"))
 
 

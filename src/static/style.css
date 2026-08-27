@@ -481,6 +481,8 @@ input:focus, textarea:focus {
 .res-bar-fill { height: 100%; width: 0%; border-radius: 6px; background: var(--blue); transition: width .5s ease, background .3s ease; }
 .res-bar-fill.warm { background: var(--warn); }
 .res-bar-fill.hot  { background: var(--danger); }
+.res-version .res-top { margin-bottom: 0; }
+.res-version .res-val { color: var(--text); }
 @media (max-width: 640px) {
   .res-item { flex-basis: 45%; padding-left: 0; border-left: none; margin-bottom: 12px; }
 }

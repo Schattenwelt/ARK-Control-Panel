@@ -62,6 +62,7 @@ TRANSLATIONS = {
     "res_cpu": {"de": "CPU", "en": "CPU"},
     "res_mem": {"de": "RAM", "en": "RAM"},
     "res_disk": {"de": "Speicher", "en": "Disk"},
+    "res_version": {"de": "ARK-Version", "en": "ARK version"},
     "res_server": {"de": "ARK-Server", "en": "ARK server"},
     "res_server_off": {"de": "aus", "en": "off"},
     "players_online": {"de": "Spieler online", "en": "Players online"},
