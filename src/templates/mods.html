@@ -70,7 +70,7 @@
       {{ t('mods_sync_btn') }}
     </button>
     <span id="sync-status" class="muted small" data-running="{{ t('mods_sync_running') }}"
-          {% if sync_state == 'active' %}data-active="1"{% endif %}></span>
+          {% if sync_state in ('active', 'activating') %}data-active="1"{% endif %}></span>
   </form>
   <div id="sync-progress" class="sync-progress" hidden>
     <div class="sync-bar"><div id="sync-bar-fill" class="sync-bar-fill"></div></div>
@@ -94,44 +94,61 @@
   if (!status) return;
   var runningLabel = status.getAttribute("data-running");
 
-  function showProgress(text) {
-    if (!text) return;
-    status.textContent = text;
-    // "Mod 3/7" -> Balken auf 3/7 setzen
-    var m = text.match(/(\d+)\s*\/\s*(\d+)/);
-    if (m && progWrap && barFill) {
-      progWrap.hidden = false;
+  function showRunning(text) {
+    status.textContent = text || runningLabel;
+    if (!progWrap || !barFill) return;
+    progWrap.hidden = false;
+    var m = (text || "").match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) {
+      // konkreter Fortschritt -> Balken auf X/Y, Puls aus
+      barFill.classList.remove("indeterminate");
       var pct = Math.round((parseInt(m[1], 10) / parseInt(m[2], 10)) * 100);
-      barFill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+      barFill.style.width = Math.max(4, Math.min(100, pct)) + "%";
+    } else {
+      // läuft, aber noch keine Zahl -> pulsierender Balken
+      barFill.classList.add("indeterminate");
+      barFill.style.width = "100%";
     }
   }
 
+  function finish(text) {
+    if (text) status.textContent = text;
+    if (barFill) { barFill.classList.remove("indeterminate"); barFill.style.width = "100%"; }
+    // kurz das Ergebnis zeigen, dann neu laden (zeigt dauerhafte Bilanz)
+    setTimeout(function () { location.reload(); }, 1600);
+  }
+
+  var polling = false;
   function poll() {
     fetch("{{ url_for('mods_sync_status') }}", { headers: { "Accept": "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.state === "activating" || d.state === "active") {
-          showProgress(d.progress || runningLabel);
+          showRunning(d.progress);
           if (btn) btn.disabled = true;
           setTimeout(poll, 2000);
         } else {
-          // Lauf beendet: letzten Fortschritt (Bilanz) kurz zeigen, dann neu laden
-          if (d.progress) { showProgress(d.progress); if (barFill) barFill.style.width = "100%"; }
-          if (status.textContent) { setTimeout(function () { location.reload(); }, 1500); }
+          finish(d.progress);
         }
       })
-      .catch(function () {});
+      .catch(function () { setTimeout(poll, 2500); });
   }
 
-  if (status.getAttribute("data-active")) {
-    showProgress(runningLabel); if (btn) btn.disabled = true; setTimeout(poll, 2000);
-  }
-  var form = document.getElementById("sync-form");
-  if (form) form.addEventListener("submit", function () {
+  function start() {
+    if (polling) return;
+    polling = true;
     if (btn) btn.disabled = true;
-    showProgress(runningLabel);
-    setTimeout(poll, 1500);
-  });
+    showRunning(null);
+    poll();
+  }
+
+  // Läuft schon beim Laden der Seite? -> direkt weiterverfolgen
+  if (status.getAttribute("data-active")) start();
+
+  // Klick auf "Synchronisieren": Formular abschicken UND Anzeige starten.
+  // (Der POST lädt die Seite neu; beim Reload greift data-active und poll läuft weiter.)
+  var form = document.getElementById("sync-form");
+  if (form) form.addEventListener("submit", function () { start(); });
 })();
 </script>
 {% endblock %}
