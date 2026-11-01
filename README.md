@@ -202,6 +202,11 @@ Transfer files of the ASA panel are not compatible.
 
 ## Auto-update (panel)
 
+The installer asks at the start whether to enable it (default: yes) and sets it
+up at the end; non-interactively use `AUTO_UPDATE=1` or `AUTO_UPDATE=0`
+(without a terminal and without the variable it stays off). It needs the panel
+to be installed from a `git clone`, not from a ZIP. To enable it later:
+
 ```bash
 sudo bash scripts/setup-autoupdate.sh            # daily ~04:30
 sudo bash scripts/setup-autoupdate.sh --run-now

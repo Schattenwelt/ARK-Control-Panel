@@ -120,6 +120,19 @@ done
 [ "$RCON_PORT" != "$PANEL_PORT" ] || die "RCON-Port und Panel-Port dürfen nicht gleich sein ($RCON_PORT)."
 echo "Ports: Spiel ${GAME_PORT}+$((GAME_PORT+1))/UDP · Query ${QUERY_PORT}/UDP · RCON ${RCON_PORT}/TCP · Panel ${PANEL_PORT}/TCP"
 
+
+# ------------------------- Panel-Auto-Update (Abfrage) ----------------------
+# AUTO_UPDATE=1 / AUTO_UPDATE=0 per Umgebungsvariable, sonst interaktiv (Standard: ja).
+# Ohne Terminal (z. B. per Skript) und ohne Vorgabe: aus. Eingerichtet wird am Ende.
+if [ -z "${AUTO_UPDATE:-}" ]; then
+    if [ -t 0 ]; then
+        read -rp "Panel täglich automatisch aktualisieren (git pull, ~${UPDATE_TIME:-04:30})? [J/n]: " yn
+        if [[ "$yn" =~ ^[nN]$ ]]; then AUTO_UPDATE=0; else AUTO_UPDATE=1; fi
+    else
+        AUTO_UPDATE=0
+    fi
+fi
+
 # ------------------------- Pakete installieren ------------------------------
 msg "Aktualisiere Paketquellen und installiere Abhängigkeiten ..."
 export DEBIAN_FRONTEND=noninteractive
@@ -374,6 +387,22 @@ systemctl daemon-reload
 systemctl disable ark.service >/dev/null 2>&1 || true
 systemctl enable --now ark-panel.service
 
+
+# ------------------------- Panel-Auto-Update (einrichten) -------------------
+AU_STATE="aus  (später: sudo bash scripts/setup-autoupdate.sh)"
+if [ "$AUTO_UPDATE" = "1" ]; then
+    if [ -d "$REPO_DIR/.git" ]; then
+        msg "Richte Panel-Auto-Update ein ..."
+        if bash "$REPO_DIR/scripts/setup-autoupdate.sh"; then
+            AU_STATE="an – täglich ~${UPDATE_TIME:-04:30} (abschalten: systemctl disable --now ark-panel-update.timer)"
+        else
+            warn "Auto-Update konnte nicht eingerichtet werden – später: sudo bash scripts/setup-autoupdate.sh"
+        fi
+    else
+        warn "$REPO_DIR ist kein git-Klon – Auto-Update übersprungen (Repo per 'git clone' holen)."
+    fi
+fi
+
 # ------------------------- Zusammenfassung ----------------------------------
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 cat <<DONE
@@ -383,6 +412,8 @@ $(printf '\033[1;32m')==========================================================
 
   Web-Panel:   http://${IP:-<container-ip>}:${PANEL_PORT}
   Login:       Benutzer '${PANEL_USER}' + dein gewähltes Passwort
+  Panel-Auto-Update: ${AU_STATE}
+
 
   Ports (in Firewall/OPNsense freigeben):
     ${GAME_PORT}/UDP + $((GAME_PORT+1))/UDP  Spielport     ${QUERY_PORT}/UDP  Query

@@ -52,7 +52,7 @@ MODS_PATH = CONF.get("mods_path", os.path.join(PANEL_DIR, "mods.json"))
 # Steam-AppID des ARK-Dedicated-Servers (für die Update-Prüfung)
 APPID = str(CONF.get("appid", "376030"))
 # Panel-Version (wird im Footer angezeigt; kein Git-/Commit-Bezug in der UI)
-PANEL_VERSION = "1.2.0"
+PANEL_VERSION = "1.2.1"
 
 # Feste Ports: beim Installieren gewählt und in panel.json abgelegt. Sie sind im
 # Panel ÜBERALL gesperrt – runtime.json, Formulare, INI-Editor und Transfer können
