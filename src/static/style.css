@@ -10,6 +10,7 @@
   --warn: #f2b53a;
   --danger: #f2726a;
   --blue: #e0912f;
+  --accent-ink: #05121d;
   --radius: 12px;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -485,3 +486,65 @@ input:focus, textarea:focus {
 @media (max-width: 640px) {
   .res-item { flex-basis: 45%; margin-bottom: 12px; }
 }
+
+/* --- Version-Footer --- */
+.foot { text-align: center; padding: 22px 0 34px; opacity: .6; }
+
+/* --- Update-Check-Zeile (Ressourcen) --- */
+.update-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.update-row .res-label { min-width: auto; }
+.update-badge { font-size: .85rem; padding: 2px 8px; border-radius: 6px; }
+.update-badge.ok    { color: var(--ok);   background: rgba(53,213,154,.12); }
+.update-badge.avail { color: var(--accent-ink); background: var(--blue); }
+.update-badge.warn  { color: var(--warn); background: rgba(242,181,58,.12); }
+
+/* --- Speicherstand-Verwaltung --- */
+.save-actions { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 6px; }
+.save-row { display: flex; gap: 8px; align-items: center; }
+.save-row select { min-width: 220px; }
+
+/* --- Geplante Neustarts --- */
+.pill.off { color: var(--muted); background: rgba(133,149,161,.1); border-color: var(--line); }
+.sched-status { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 16px; margin-top: 10px; }
+.sched-status > div { display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg); }
+.sched-running { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+.day-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.day-picker .day { position: relative; cursor: pointer; }
+.day-picker .day input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.day-picker .day span { display: inline-block; min-width: 46px; text-align: center;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: .85rem; color: var(--muted); background: var(--bg); user-select: none; }
+.day-picker .day input:checked + span { border-color: var(--blue); color: var(--text);
+  background: rgba(224,145,47,.14); }
+.day-picker .day input:focus-visible + span { box-shadow: 0 0 0 3px rgba(224,145,47,.25); }
+.sched-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 16px; margin-top: 16px; }
+.sched-opts .field.check span { font-size: .9rem; }
+select { background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; font-size: .9rem; font-family: var(--sans); }
+select:focus { outline: none; border-color: var(--blue); }
+
+/* --- Navigation umbrechen statt überlaufen (schmale Fenster / Handy) --- */
+.topbar { flex-wrap: wrap; gap: 8px 16px; }
+.nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+@media (max-width: 900px) {
+  .topbar { padding: 12px 16px; }
+  .nav { justify-content: flex-start; width: 100%; }
+  .nav a { padding: 6px 10px; font-size: .88rem; }
+}
+
+/* ---- Transfer (Server A -> B) ---- */
+.xfer-parts {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 16px; margin: 14px 0 6px;
+}
+.xfer-parts .field.check span { font-size: .9rem; }
+.xfer-parts .xfer-sub { grid-column: 1 / -1; opacity: .85; }
+input[type=file] { padding: 7px 9px; cursor: pointer; }
+
+.save-players { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.save-players span { font-size: .85rem; }

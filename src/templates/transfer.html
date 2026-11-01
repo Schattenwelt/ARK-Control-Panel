@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_transfer') }} · ARK Panel{% endblock %}
+
+{% macro part_options() %}
+  <div class="xfer-parts">
+    {% for p in ['gus', 'game', 'mods', 'maps', 'launch', 'session', 'secrets'] %}
+    <label class="field check">
+      <input type="checkbox" name="part_{{ p }}" value="1" {{ 'checked' if p in defaults }}>
+      <span>{{ t('xfer_opt_' + p) }}</span>
+    </label>
+    {% endfor %}
+    <label class="field check xfer-sub">
+      <input type="checkbox" name="mods_merge" value="1">
+      <span>{{ t('xfer_opt_mods_merge') }}</span>
+    </label>
+  </div>
+  <p class="muted small">{{ t('xfer_keep_note') }}</p>
+{% endmacro %}
+
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('xfer_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_intro') }}</p>
+  {% if running %}
+  <div class="notice">{{ t('xfer_running_note') }}</div>
+  {% endif %}
+</section>
+
+<!-- ===== Server A: Quelle ===== -->
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('xfer_export_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_export_hint', mods=mods_count, maps=maps_count) }}</p>
+  <div class="actions" style="margin-top:0">
+    <a class="btn primary" href="{{ url_for('transfer_download') }}">{{ t('xfer_download_btn') }}</a>
+  </div>
+
+  <h3 class="subhead">{{ t('xfer_token_title') }}</h3>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_token_hint') }}</p>
+  {% if token %}
+    <div class="grid">
+      <label class="field">
+        <span class="fname">{{ t('xfer_this_url') }}</span>
+        <input class="mono" value="{{ self_url }}" readonly onclick="this.select()">
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('xfer_token') }}</span>
+        <input class="mono" value="{{ token }}" readonly onclick="this.select()">
+      </label>
+    </div>
+  {% else %}
+    <p class="muted">{{ t('xfer_token_none') }}</p>
+  {% endif %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('transfer_token') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="act" value="create">
+      <button class="btn" type="submit">{{ t('xfer_token_new') if token else t('xfer_token_create') }}</button>
+    </form>
+    {% if token %}
+    <form method="post" action="{{ url_for('transfer_token') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="act" value="revoke">
+      <button class="btn danger" type="submit">{{ t('xfer_token_revoke') }}</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ===== Server B: Ziel ===== -->
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('xfer_pull_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_pull_hint') }}</p>
+  <form method="post" action="{{ url_for('transfer_pull') }}"
+        onsubmit='return confirm({{ t('xfer_confirm')|tojson }})'>
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div class="grid">
+      <label class="field">
+        <span class="fname">{{ t('xfer_src_url') }}</span>
+        <input name="url" placeholder="http://192.168.1.50" spellcheck="false" required>
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('xfer_token') }}</span>
+        <input name="token" class="mono" spellcheck="false" autocomplete="off" required>
+      </label>
+    </div>
+    {{ part_options() }}
+    <div class="actions">
+      <button class="btn primary" type="submit">{{ t('xfer_pull_btn') }}</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('xfer_upload_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_upload_hint') }}</p>
+  <form method="post" action="{{ url_for('transfer_upload') }}" enctype="multipart/form-data"
+        onsubmit='return confirm({{ t('xfer_confirm')|tojson }})'>
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="file" name="bundle" accept=".json,application/json" required>
+    {{ part_options() }}
+    <div class="actions">
+      <button class="btn primary" type="submit">{{ t('xfer_upload_btn') }}</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('xfer_backups_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('xfer_backups_hint') }}</p>
+  {% if backups %}
+  <form method="post" action="{{ url_for('transfer_restore') }}" class="save-row"
+        onsubmit='return confirm({{ t('xfer_confirm_restore')|tojson }})'>
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <select name="backup" {{ 'disabled' if running }}>
+      {% for b in backups %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit" {{ 'disabled' if running }}>{{ t('xfer_restore_btn') }}</button>
+  </form>
+  {% else %}
+  <p class="muted">{{ t('xfer_backups_none') }}</p>
+  {% endif %}
+</section>
+{% endblock %}

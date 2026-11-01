@@ -13,6 +13,7 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 from functools import wraps
 
@@ -47,6 +48,11 @@ PANEL_DIR = os.path.dirname(CONFIG_PATH)
 RUNTIME_PATH = CONF.get("runtime_path", os.path.join(PANEL_DIR, "runtime.json"))
 MAPS_PATH = CONF.get("maps_path", os.path.join(PANEL_DIR, "maps.json"))
 MODS_PATH = CONF.get("mods_path", os.path.join(PANEL_DIR, "mods.json"))
+
+# Steam-AppID des ARK-Dedicated-Servers (für die Update-Prüfung)
+APPID = str(CONF.get("appid", "376030"))
+# Panel-Version (wird im Footer angezeigt; kein Git-/Commit-Bezug in der UI)
+PANEL_VERSION = "1.1.0"
 
 app = Flask(__name__)
 app.secret_key = CONF["secret_key"]
@@ -215,6 +221,7 @@ def t(key, **kw):
 app.jinja_env.globals["t"] = t
 app.jinja_env.globals["current_lang"] = current_lang
 app.jinja_env.globals["LANGS"] = LANGS
+app.jinja_env.globals["PANEL_VERSION"] = PANEL_VERSION
 
 
 @app.context_processor
@@ -239,6 +246,10 @@ def run(cmd, timeout=30):
         return p.returncode, (p.stdout + p.stderr).strip()
     except subprocess.TimeoutExpired:
         return 1, "Zeitüberschreitung beim Ausführen des Befehls."
+    except (FileNotFoundError, OSError) as e:
+        # z. B. 'sudo' oder 'journalctl' nicht vorhanden -> nicht crashen,
+        # sondern als Fehlschlag melden (Aufrufer haben Fallbacks)
+        return 1, str(e)
 
 
 def service_active(name):
@@ -271,9 +282,63 @@ def stop_service():
 
 
 def recent_logs(name, lines=60):
+    """Journal einer Unit lesen (der ark-User ist in der systemd-journal-Gruppe)."""
     rc, out = run(["journalctl", "-u", name, "-n", str(lines),
                    "--no-pager", "-o", "short-iso"])
-    return out if rc == 0 else "Keine Logs verfügbar (Rechte prüfen)."
+    if rc == 0 and out.strip() and "-- No entries --" not in out:
+        return out
+    return "Keine Logs verfügbar (Rechte prüfen)."
+
+
+def _tail_file(path, lines):
+    """Letzte n Zeilen einer (ggf. großen) Datei effizient lesen."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            data = b""
+            block = 8192
+            while size > 0 and data.count(b"\n") <= lines:
+                step = min(block, size)
+                size -= step
+                fh.seek(size)
+                data = fh.read(step) + data
+        text = data.decode("utf-8", "ignore")
+        return "\n".join(text.splitlines()[-lines:])
+    except OSError:
+        return ""
+
+
+def game_log_tail(lines=60):
+    """Letzte Zeilen der ARK-eigenen Logdatei (überlebt Reboots; journald im LXC
+    ist oft flüchtig). Fällt auf das neueste Log-Backup zurück."""
+    logs_dir = os.path.join(ARK_DIR, "ShooterGame", "Saved", "Logs")
+    active = os.path.join(logs_dir, "ShooterGame.log")
+    if os.path.isfile(active):
+        tail = _tail_file(active, lines)
+        if tail.strip():
+            return tail
+    try:
+        backups = sorted(
+            (os.path.join(logs_dir, f) for f in os.listdir(logs_dir) if f.endswith(".log")),
+            key=os.path.getmtime, reverse=True)
+    except OSError:
+        backups = []
+    for path in backups:
+        tail = _tail_file(path, lines)
+        if tail.strip():
+            return tail
+    return ""
+
+
+def server_log(lines=60):
+    """Server-Log fürs Dashboard: bevorzugt das Unit-Journal (zeigt auch Startfehler
+    des Wrappers), fällt aber auf die ARK-Logdatei zurück, wenn journald leer ist."""
+    j = recent_logs(SERVICE, lines)
+    if "Keine Logs verfügbar" not in j:
+        return j
+    g = game_log_tail(lines)
+    return g if g.strip() else j
 
 
 # ---------------------------------------------------------------------------
@@ -342,10 +407,22 @@ def read_ini(key):
 
 
 def write_ini(key, text):
+    """INI atomar schreiben (Temp-Datei + os.replace) – ein Abbruch mitten im
+    Schreiben hinterlässt so nie eine halbe Datei. Dateirechte bleiben erhalten."""
     path = INI_FILES[key]
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        mode = 0o644
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)
+    try:
+        os.chmod(tmp, mode)
+    except OSError:
+        pass
+    os.replace(tmp, path)
 
 
 def ini_get(path, section, key):
@@ -652,6 +729,48 @@ def ark_version():
     return ver
 
 
+def installed_build():
+    """Installierte Build-ID aus steamapps/appmanifest_<APPID>.acf (oder None)."""
+    acf = os.path.join(ARK_DIR, "steamapps", "appmanifest_%s.acf" % APPID)
+    try:
+        with open(acf, "r", errors="ignore") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    m = re.search(r'"buildid"\s+"(\d+)"', text)
+    return m.group(1) if m else None
+
+
+_latest_cache = {"build": None, "ts": 0.0}
+
+
+def latest_build():
+    """Neueste öffentliche Build-ID von api.steamcmd.net (gecacht, 30 min)."""
+    now = time.time()
+    if _latest_cache["build"] and now - _latest_cache["ts"] < 1800:
+        return _latest_cache["build"]
+    try:
+        req = urllib.request.Request("https://api.steamcmd.net/v1/info/%s" % APPID,
+                                     headers={"User-Agent": "ark-panel"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.load(resp)
+        build = str(data["data"][APPID]["depots"]["branches"]["public"]["buildid"])
+        _latest_cache.update(build=build, ts=now)
+        return build
+    except Exception:
+        return None
+
+
+def update_status():
+    """Vergleicht installierte vs. neueste Build-ID.
+    Gibt (installed, latest, status) mit status in current|available|unknown."""
+    inst = installed_build()
+    lat = latest_build()
+    if not inst or not lat:
+        return inst, lat, "unknown"
+    return inst, lat, ("current" if inst == lat else "available")
+
+
 def system_stats():
     """Sammelt CPU/RAM/Disk für den Ressourcen-Monitor + ARK-Version."""
     cpu = _cpu_percent()
@@ -687,7 +806,7 @@ def dashboard():
         update_state=service_active(UPDATE_SERVICE),
         enabled=service_enabled(SERVICE),
         rcon_enabled=rcon_config()[0],
-        logs=recent_logs(SERVICE),
+        logs=server_log(),
         active_map=map_name_for(rt["map"]),
         mods_count=len(rt["mods"]),
         service=SERVICE,
@@ -696,6 +815,7 @@ def dashboard():
         connect_query=rt.get("query_port", 27015),
         connect_game=rt.get("port", 7777),
         connect_kind=kind,
+        installed_build=installed_build(),
     )
 
 
@@ -707,7 +827,7 @@ def status():
         update=service_active(UPDATE_SERVICE),
         enabled=service_enabled(SERVICE),
         stats=system_stats(),
-        logs=recent_logs(SERVICE, 60),
+        logs=server_log(60),
     )
 
 
@@ -740,6 +860,15 @@ def action():
 def update_logs():
     return jsonify(state=service_active(UPDATE_SERVICE),
                    logs=recent_logs(UPDATE_SERVICE, 80))
+
+
+@app.route("/update-check", methods=["POST"])
+@login_required
+def update_check():
+    if not check_csrf():
+        return jsonify(ok=False, msg=t("csrf_invalid"))
+    inst, lat, st = update_status()
+    return jsonify(ok=True, installed=inst, latest=lat, status=st)
 
 
 # ---------------------------------------------------------------------------
@@ -850,6 +979,204 @@ def maps_launch():
         save_runtime(rt)
     flash(t("launch_saved"))
     return redirect(url_for("maps_page"))
+
+
+# ---------------------------------------------------------------------------
+# Routen: Speicherstände (Save/Backup-Verwaltung)
+#
+# ARK: Survival Evolved legt alle Karten FLACH in ShooterGame/Saved/SavedArks/ ab:
+#   <Karte>.ark                               aktive Welt
+#   <Karte>_DD.MM.YYYY_HH.MM.SS.ark           automatische Backups des Servers
+#   <Karte>_manual_DD.MM.YYYY_HH.MM.SS.ark    manuelle Backups aus dem Panel
+#   *.arkprofile / *.arktribe (+ .profilebak/.tribebak)  Spieler & Stämme (für
+#                                             alle Karten in diesem Ordner gemeinsam)
+# Panel und Server laufen als derselbe User (ark) -> kein sudo-Helfer nötig.
+# Es wird nie etwas gelöscht: Ersetztes wird als .corrupt-<ts> bzw. in den
+# Unterordner _alt/ weggelegt.
+# ---------------------------------------------------------------------------
+_SAVE_MAP_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+_SAVE_BACKUP_RE = re.compile(
+    r"^(?P<map>[A-Za-z0-9_]+?)_(?:manual_)?\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}\.ark$")
+_SAVE_PLAYER_EXT = (".arkprofile", ".arktribe", ".profilebak", ".tribebak")
+SAVES_ARCHIVE_DIR = "_alt"
+
+
+class SaveError(Exception):
+    pass
+
+
+def saves_base():
+    return os.path.join(ARK_DIR, "ShooterGame", "Saved", "SavedArks")
+
+
+def _save_file(name):
+    """Pfad einer Datei direkt in SavedArks/ – ohne Pfad-Ausbruch."""
+    base = os.path.realpath(saves_base())
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        raise SaveError("ungültiger Dateiname")
+    path = os.path.realpath(os.path.join(base, name))
+    if os.path.dirname(path) != base:
+        raise SaveError("ungültiger Dateiname")
+    return path
+
+
+def _file_info(path):
+    st = os.stat(path)
+    return {"size": round(st.st_size / 1048576, 1), "ts": st.st_mtime,
+            "when": time.strftime("%d.%m.%Y %H:%M", time.localtime(st.st_mtime))}
+
+
+def list_saves():
+    """Pro Karte: aktive Save + Backups (neueste zuerst)."""
+    base = saves_base()
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return [], 0
+    maps = {}
+    players = 0
+    for f in names:
+        full = os.path.join(base, f)
+        if not os.path.isfile(full):
+            continue
+        if f.endswith((".arkprofile", ".arktribe")):
+            players += 1
+            continue
+        if not f.endswith(".ark"):
+            continue
+        mb = _SAVE_BACKUP_RE.match(f)
+        try:
+            info = _file_info(full)
+        except OSError:
+            continue
+        if mb:
+            maps.setdefault(mb.group("map"), {"active": None, "backups": []})["backups"].append(
+                dict(info, name=f))
+        elif _SAVE_MAP_RE.match(f[:-4]):
+            maps.setdefault(f[:-4], {"active": None, "backups": []})["active"] = info
+    active_map = load_runtime().get("map")
+    out = []
+    for m in sorted(maps):
+        d = maps[m]
+        d["backups"].sort(key=lambda b: b["ts"], reverse=True)
+        out.append({"map": m, "name": map_name_for(m), "active": d["active"],
+                    "backups": d["backups"], "is_current": (m == active_map)})
+    return out, players
+
+
+def save_backup(m):
+    import shutil
+    if not _SAVE_MAP_RE.match(m):
+        raise SaveError("ungültiger Kartenname")
+    src = _save_file(m + ".ark")
+    if not os.path.isfile(src):
+        raise SaveError("keine aktive Save vorhanden (%s.ark)" % m)
+    dst = _save_file("%s_manual_%s.ark" % (m, time.strftime("%d.%m.%Y_%H.%M.%S")))
+    shutil.copy2(src, dst)
+    return os.path.basename(dst)
+
+
+def save_restore(m, backup):
+    import shutil
+    if not _SAVE_MAP_RE.match(m):
+        raise SaveError("ungültiger Kartenname")
+    mb = _SAVE_BACKUP_RE.match(backup or "")
+    if not mb or mb.group("map") != m:
+        raise SaveError("ungültiger Backup-Dateiname")
+    src = _save_file(backup)
+    if not os.path.isfile(src):
+        raise SaveError("Backup nicht gefunden: %s" % backup)
+    active = _save_file(m + ".ark")
+    if os.path.isfile(active):
+        os.replace(active, "%s.corrupt-%d" % (active, int(time.time())))   # aufheben
+    shutil.copy2(src, active)
+
+
+def save_fresh(m, with_players=False):
+    """Welt einer Karte beiseitelegen -> der Server erzeugt beim Start eine frische.
+    Optional auch Spielerprofile/Stämme (gelten für alle Karten im Ordner)."""
+    if not _SAVE_MAP_RE.match(m):
+        raise SaveError("ungültiger Kartenname")
+    base = saves_base()
+    dest = os.path.join(base, SAVES_ARCHIVE_DIR, "%s_%s" % (m, time.strftime("%Y%m%d-%H%M%S")))
+    moved = []
+    for f in sorted(os.listdir(base)):
+        full = os.path.join(base, f)
+        if not os.path.isfile(full):
+            continue
+        mb = _SAVE_BACKUP_RE.match(f)
+        mine = (f == m + ".ark" or (mb and mb.group("map") == m)
+                or f.startswith(m + ".ark.corrupt-")
+                or (f.startswith(m + "_") and f.endswith(".bak")))
+        if with_players and f.endswith(_SAVE_PLAYER_EXT):
+            mine = True
+        if mine:
+            os.makedirs(dest, mode=0o750, exist_ok=True)
+            os.replace(full, os.path.join(dest, f))
+            moved.append(f)
+    if not moved:
+        raise SaveError("keine Dateien für %s gefunden" % m)
+    return os.path.relpath(dest, base)
+
+
+@app.route("/saves")
+@login_required
+def saves_page():
+    saves, players = list_saves()
+    return render_template("saves.html", saves=saves, player_files=players,
+                           archive_dir=SAVES_ARCHIVE_DIR,
+                           running=(service_active(SERVICE) == "active"))
+
+
+def _saves_guard():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return False
+    if service_active(SERVICE) == "active":
+        flash(t("saves_stop_first"))
+        return False
+    return True
+
+
+@app.route("/saves/backup", methods=["POST"])
+@login_required
+def saves_backup():
+    if _saves_guard():
+        try:
+            name = save_backup(request.form.get("map", ""))
+            flash(t("saves_backup_done", name=name))
+        except (SaveError, OSError) as e:
+            flash(t("saves_error", err=str(e)))
+    return redirect(url_for("saves_page"))
+
+
+@app.route("/saves/restore", methods=["POST"])
+@login_required
+def saves_restore():
+    if _saves_guard():
+        backup = request.form.get("backup", "")
+        if not backup:
+            flash(t("saves_pick_backup"))
+        else:
+            try:
+                save_restore(request.form.get("map", ""), backup)
+                flash(t("saves_restored", name=backup))
+            except (SaveError, OSError) as e:
+                flash(t("saves_error", err=str(e)))
+    return redirect(url_for("saves_page"))
+
+
+@app.route("/saves/fresh", methods=["POST"])
+@login_required
+def saves_fresh():
+    if _saves_guard():
+        try:
+            where = save_fresh(request.form.get("map", ""),
+                               with_players=bool(request.form.get("players")))
+            flash(t("saves_fresh_done", where=where))
+        except (SaveError, OSError) as e:
+            flash(t("saves_error", err=str(e)))
+    return redirect(url_for("saves_page"))
 
 
 # ---------------------------------------------------------------------------
@@ -1022,6 +1349,61 @@ def _current_file_key():
     return key if key in INI_FILES else "gus"
 
 
+# Diese Keys steuert das Panel selbst (Startzeile bzw. ark-launch.sh) – im
+# Feld-Editor ausblenden. ActiveMods schreibt ark-launch.sh bei jedem Start neu.
+HIDDEN_KEYS = {"RCONPort", "RCONEnabled", "SessionName", "Port", "QueryPort", "ActiveMods"}
+
+
+def strip_wrap(v):
+    """Umschließende Klammern (…) oder Anführungszeichen "…" für die Anzeige
+    entfernen. Der Wert bleibt editierbar; beim Speichern wird die Umrandung
+    per rewrap wieder ergänzt."""
+    if len(v) >= 2 and v[0] == "(" and v[-1] == ")":
+        return v[1:-1]
+    if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+        return v[1:-1]
+    return v
+
+
+def rewrap(orig, new):
+    """Beim Speichern die Umrandung des Originalwerts wieder anwenden. Falls der
+    Nutzer die Klammern/Quotes selbst mit eingegeben hat, werden sie nicht doppelt
+    gesetzt."""
+    if len(orig) >= 2 and orig[0] == "(" and orig[-1] == ")":
+        inner = new[1:-1] if len(new) >= 2 and new[0] == "(" and new[-1] == ")" else new
+        return "(" + inner + ")"
+    if len(orig) >= 2 and orig[0] == '"' and orig[-1] == '"':
+        inner = new[1:-1] if len(new) >= 2 and new[0] == '"' and new[-1] == '"' else new
+        return '"' + inner + '"'
+    return new
+
+
+def display_groups(entries):
+    """Sektionen fürs Template: panel-verwaltete Keys ausblenden, sonst alle Felder
+    zeigen – aber mit „nacktem" Anzeigewert (ohne umschließende ()/"")."""
+    groups = []
+    for g in group_ini(entries):
+        fields = []
+        for f in g["fields"]:
+            if f["key"] in HIDDEN_KEYS:
+                continue
+            f = dict(f)
+            f["display"] = strip_wrap(f["value"])
+            fields.append(f)
+        if fields:
+            groups.append({"name": g["name"], "fields": fields})
+    return groups
+
+
+def enforce_rcon(key):
+    """RCON ist fürs Panel Pflicht: RCONEnabled immer True, RCONPort auf den
+    Port aus runtime.json festnageln (auch nach einem Rohtext-Speichern)."""
+    if key != "gus":
+        return
+    ini_set(GUS_PATH, "ServerSettings", "RCONEnabled", "True")
+    ini_set(GUS_PATH, "ServerSettings", "RCONPort", str(load_runtime()["rcon_port"]))
+
+
 @app.route("/config", methods=["GET"])
 @login_required
 def config():
@@ -1029,7 +1411,7 @@ def config():
     raw, entries = read_ini(key)
     return render_template("config.html",
                            file_key=key, files=INI_LABELS,
-                           groups=group_ini(entries), raw=raw,
+                           groups=display_groups(entries), raw=raw,
                            exists=os.path.exists(INI_FILES[key]),
                            ini_path=INI_FILES[key])
 
@@ -1047,8 +1429,14 @@ def config_save():
         if e["type"] == "kv":
             field = "field_" + e["id"]
             if field in request.form:
-                edits[e["id"]] = request.form.get(field, "")
-    write_ini(key, apply_ini(entries, edits))
+                # angezeigt wurde der Wert ohne umschließende ()/"" – hier wieder ergänzen
+                edits[e["id"]] = rewrap(e["value"], request.form.get(field, ""))
+    try:
+        write_ini(key, apply_ini(entries, edits))
+        enforce_rcon(key)
+    except OSError as e:
+        flash(t("config_write_error", err=str(e)))
+        return redirect(url_for("config", file=key))
     flash(t("config_saved"))
     return redirect(url_for("config", file=key))
 
@@ -1060,7 +1448,12 @@ def config_save_raw():
         flash(t("csrf_invalid"))
         return redirect(url_for("config"))
     key = _current_file_key()
-    write_ini(key, request.form.get("raw", ""))
+    try:
+        write_ini(key, request.form.get("raw", ""))
+        enforce_rcon(key)
+    except OSError as e:
+        flash(t("config_write_error", err=str(e)))
+        return redirect(url_for("config", file=key))
     flash(t("raw_saved"))
     return redirect(url_for("config", file=key))
 
@@ -1081,7 +1474,13 @@ def players():
         with rcon_connect() as r:
             return jsonify(enabled=True, reachable=True, players=r.players())
     except (RCONError, OSError) as e:
-        return jsonify(enabled=True, reachable=False, players=[], note=str(e))
+        # Server-Prozess läuft, aber RCON nimmt noch keine Verbindung an – das ist
+        # beim Hochfahren/Weltladen normal (Port noch zu). Freundlicher Hinweis statt
+        # rohem "[Errno 111] Connection refused".
+        refused = isinstance(e, ConnectionRefusedError) or "refused" in str(e).lower() \
+            or "reset" in str(e).lower() or "timed out" in str(e).lower()
+        note = t("rcon_starting") if refused else str(e)
+        return jsonify(enabled=True, reachable=False, players=[], note=note)
 
 
 @app.route("/rcon", methods=["POST"])
@@ -1162,6 +1561,829 @@ def rcon_setup():
     generated = ensure_rcon_configured()
     flash(t("rcon_enabled_gen", pw=generated) if generated else t("rcon_enabled_existing"))
     return redirect(url_for("dashboard"))
+
+
+# ---------------------------------------------------------------------------
+# Geplante Neustarts (im Panel einstellbar)
+#
+# Ein Hintergrund-Thread im Panel-Prozess (waitress = ein Prozess) prüft alle
+# 20 s den Zeitplan aus schedule.json. Zum Termin: Countdown-Warnungen per RCON-
+# Broadcast, SaveWorld, dann `systemctl restart ark.service` über die vorhandene
+# sudo-Regel. Optional vorher Spiel-Update (ark-update.service, SteamCMD) und
+# Mod-Sync (ark-mods.service) – ARK: SE aktualisiert beides NICHT von selbst.
+# ---------------------------------------------------------------------------
+from datetime import datetime, timedelta
+
+try:
+    from zoneinfo import ZoneInfo
+    try:
+        SCHED_TZ = ZoneInfo(CONF.get("tz") or "Europe/Berlin")
+    except Exception:
+        SCHED_TZ = None
+except ImportError:      # Python < 3.9
+    SCHED_TZ = None
+
+SCHEDULE_PATH = CONF.get("schedule_path", os.path.join(PANEL_DIR, "schedule.json"))
+SCHEDULE_DEFAULTS = {
+    "enabled": False,
+    "times": ["05:00"],
+    "days": [0, 1, 2, 3, 4, 5, 6],          # 0 = Montag … 6 = Sonntag
+    "warn_minutes": [15, 10, 5, 1],
+    "message": "Server-Neustart in {min} Minute(n) – bitte in Sicherheit bringen!",
+    "save_first": True,
+    "skip_if_stopped": True,
+    "skip_if_players": False,
+    "update_first": False,      # vorher SteamCMD-Update (ark-update.service)
+    "sync_mods": False,         # vorher Workshop-Mods synchronisieren (ark-mods.service)
+    # Status (vom Scheduler gepflegt)
+    "last_slot": "",
+    "last_run": "",
+    "last_result": "",
+}
+TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+SCHED_GRACE = timedelta(minutes=5)   # verpasster Termin (z. B. Panel-Neustart) wird bis 5 min danach nachgeholt
+_sched_lock = threading.Lock()
+_job = {"thread": None, "cancel": threading.Event(), "target": None, "label": ""}
+
+
+def sched_now():
+    return datetime.now(SCHED_TZ) if SCHED_TZ else datetime.now().astimezone()
+
+
+def load_schedule():
+    data = _load_json(SCHEDULE_PATH, SCHEDULE_DEFAULTS)
+    s = dict(SCHEDULE_DEFAULTS)
+    s.update({k: data.get(k, v) for k, v in SCHEDULE_DEFAULTS.items()})
+    s["times"] = sorted({x for x in s.get("times", []) if TIME_RE.match(str(x))},
+                        key=lambda x: tuple(int(p) for p in x.split(":")))
+    s["times"] = ["%02d:%02d" % tuple(int(p) for p in x.split(":")) for x in s["times"]]
+    s["days"] = sorted({int(d) for d in s.get("days", []) if str(d).isdigit() and 0 <= int(d) <= 6})
+    s["warn_minutes"] = sorted({int(w) for w in s.get("warn_minutes", [])
+                                if str(w).isdigit() and 1 <= int(w) <= 60}, reverse=True)
+    return s
+
+
+def save_schedule(s):
+    _save_json(SCHEDULE_PATH, s)
+
+
+def _sched_update(**kw):
+    with _sched_lock:
+        s = load_schedule()
+        s.update(kw)
+        save_schedule(s)
+
+
+def _occurrences(s, now):
+    """Neustart-Termine von gestern bis übermorgen (für Fenster über Mitternacht)."""
+    out = []
+    for offset in (-1, 0, 1, 2):
+        day = (now + timedelta(days=offset)).date()
+        if day.weekday() not in s["days"]:
+            continue
+        for hm in s["times"]:
+            h, m = (int(p) for p in hm.split(":"))
+            dt = datetime(day.year, day.month, day.day, h, m, tzinfo=now.tzinfo)
+            out.append(dt)
+    return sorted(out)
+
+
+def next_restart(s=None):
+    s = s or load_schedule()
+    if not s["enabled"] or not s["times"] or not s["days"]:
+        return None
+    now = sched_now()
+    for dt in _occurrences(s, now):
+        if dt > now:
+            return dt
+    return None
+
+
+def _broadcast(msg):
+    try:
+        with rcon_connect() as r:
+            r.broadcast(msg)
+        return True
+    except (RCONError, OSError):
+        return False
+
+
+def _players_online():
+    try:
+        with rcon_connect() as r:
+            return len(r.players())
+    except (RCONError, OSError):
+        return 0
+
+
+def _sync_mods_blocking(max_wait=3600):
+    """Mod-Sync anstoßen und auf das Ende warten. Gibt eine Liste von Hinweisen zurück."""
+    rc, out = svc("start", "--no-block", MODS_SERVICE)
+    if rc != 0:
+        return ["mods: " + (out or "rc=%d" % rc)]
+    time.sleep(3)
+    waited = 3
+    while service_active(MODS_SERVICE) in ("active", "activating") and waited < max_wait:
+        time.sleep(5)
+        waited += 5
+    if waited >= max_wait:
+        return ["mods: timeout"]
+    last = read_last_sync() or {}
+    if last.get("failed"):
+        return ["mods failed: " + ", ".join(str(x) for x in last["failed"])]
+    return []
+
+
+def _restart_job(target, slot, s):
+    """Countdown + Neustart. Läuft in eigenem Thread; abbrechbar über _job['cancel']."""
+    cancel = _job["cancel"]
+    stamp = lambda: sched_now().strftime("%d.%m.%Y %H:%M")
+    try:
+        if s["skip_if_stopped"] and service_active(SERVICE) != "active":
+            _sched_update(last_run=stamp(), last_result="skipped_stopped")
+            return
+        if s["skip_if_players"] and _players_online() > 0:
+            _sched_update(last_run=stamp(), last_result="skipped_players")
+            return
+        # Warnungen (nur die, deren Zeitpunkt noch nicht vorbei ist)
+        for w in s["warn_minutes"]:
+            at = target - timedelta(minutes=w)
+            if at < sched_now() - timedelta(seconds=30):
+                continue
+            while sched_now() < at:
+                if cancel.wait(1):
+                    break
+            if cancel.is_set():
+                break
+            try:
+                text = s["message"].format(min=w)
+            except (KeyError, IndexError, ValueError):
+                text = s["message"]
+            _broadcast(text)
+        while not cancel.is_set() and sched_now() < target:
+            cancel.wait(1)
+        if cancel.is_set():
+            _broadcast("Server-Neustart abgebrochen.")
+            _sched_update(last_run=stamp(), last_result="cancelled")
+            return
+
+        if s["save_first"]:
+            try:
+                with rcon_connect() as r:
+                    r.save()
+                time.sleep(5)          # SaveWorld schreibt asynchron
+            except (RCONError, OSError):
+                pass
+        do_mods = s["sync_mods"] and bool(load_runtime()["mods"])
+        if s["update_first"] or do_mods:
+            # Server stoppen, Update/Mod-Sync laufen lassen, danach wieder starten.
+            # (ark-update.service stoppt ark.service zusätzlich selbst per ExecStartPre.)
+            warns = []
+            svc("disable", "--now", SERVICE)
+            svc("reset-failed", SERVICE)
+            if s["update_first"]:
+                rc, out = run(["sudo", "-n", "systemctl", "start", UPDATE_SERVICE], timeout=7500)
+                if rc != 0:
+                    warns.append("update: " + (out or "rc=%d" % rc))
+            if do_mods:
+                warns += _sync_mods_blocking()
+            rc2, out2 = run(["sudo", "-n", "systemctl", "enable", "--now", SERVICE], timeout=300)
+            ok = rc2 == 0
+            err = out2 if not ok else "; ".join(warns)
+        else:
+            svc("enable", SERVICE)
+            rc, out = run(["sudo", "-n", "systemctl", "restart", SERVICE], timeout=300)
+            ok, err = rc == 0, out
+        _sched_update(last_run=stamp(),
+                      last_result="ok" if ok and not err else ("ok_warn:" + err[:200] if ok else "error:" + err[:200]))
+    finally:
+        with _sched_lock:
+            _job.update(thread=None, target=None, label="")
+
+
+def start_restart_job(target, slot, s, label):
+    """Startet einen Neustart-Job, falls keiner läuft. Gibt True bei Erfolg zurück."""
+    with _sched_lock:
+        if _job["thread"] is not None:
+            return False
+        _job["cancel"] = threading.Event()
+        th = threading.Thread(target=_restart_job, args=(target, slot, s),
+                              name="ark-restart-job", daemon=True)
+        _job.update(thread=th, target=target, label=label)
+        th.start()
+    return True
+
+
+def _scheduler_loop():
+    while True:
+        try:
+            s = load_schedule()
+            if s["enabled"] and s["times"] and s["days"] and _job["thread"] is None:
+                now = sched_now()
+                lead = timedelta(minutes=max(s["warn_minutes"] or [0]))
+                for dt in _occurrences(s, now):
+                    slot = dt.strftime("%Y-%m-%d %H:%M")
+                    if slot == s["last_slot"]:
+                        continue
+                    if dt - lead <= now <= dt + SCHED_GRACE:
+                        _sched_update(last_slot=slot)
+                        start_restart_job(dt, slot, s, "schedule")
+                        break
+        except Exception as e:      # Scheduler darf nie sterben
+            print("scheduler error:", e, flush=True)
+        time.sleep(20)
+
+
+_scheduler_started = False
+
+
+def start_scheduler():
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    _scheduler_started = True
+    threading.Thread(target=_scheduler_loop, name="ark-scheduler", daemon=True).start()
+
+
+WEEKDAYS = [("mon", 0), ("tue", 1), ("wed", 2), ("thu", 3), ("fri", 4), ("sat", 5), ("sun", 6)]
+
+
+def _result_text(code):
+    if not code:
+        return ""
+    if code.startswith("error:"):
+        return t("sched_res_error", err=code[6:])
+    if code.startswith("ok_warn:"):
+        return t("sched_res_ok_warn", err=code[8:])
+    return t("sched_res_" + code)
+
+
+@app.route("/schedule")
+@login_required
+def schedule_page():
+    s = load_schedule()
+    nxt = next_restart(s)
+    job_target = _job["target"]
+    return render_template(
+        "schedule.html", s=s, weekdays=WEEKDAYS,
+        next_restart=(t("wd_" + WEEKDAYS[nxt.weekday()][0]) + nxt.strftime(" %d.%m.%Y %H:%M")) if nxt else "",
+        job_active=job_target is not None,
+        job_target=job_target.strftime("%H:%M:%S") if job_target else "",
+        job_label=_job["label"],
+        last_result=_result_text(s["last_result"]),
+        tz_name=str(SCHED_TZ) if SCHED_TZ else time.strftime("%Z"),
+        now=sched_now().strftime("%H:%M"),
+    )
+
+
+@app.route("/schedule/save", methods=["POST"])
+@login_required
+def schedule_save():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("schedule_page"))
+    raw_times = [x.strip() for x in re.split(r"[,;\s]+", request.form.get("times", "")) if x.strip()]
+    bad = [x for x in raw_times if not TIME_RE.match(x)]
+    if bad:
+        flash(t("sched_bad_time", val=", ".join(bad)))
+        return redirect(url_for("schedule_page"))
+    if len(raw_times) > 12:
+        flash(t("sched_too_many"))
+        return redirect(url_for("schedule_page"))
+    raw_warn = [x.strip() for x in re.split(r"[,;\s]+", request.form.get("warn_minutes", "")) if x.strip()]
+    if any(not x.isdigit() or not 1 <= int(x) <= 60 for x in raw_warn):
+        flash(t("sched_bad_warn"))
+        return redirect(url_for("schedule_page"))
+    days = [int(d) for d in request.form.getlist("days") if d.isdigit() and 0 <= int(d) <= 6]
+    message = request.form.get("message", "").replace("\r", " ").replace("\n", " ").strip()[:200]
+    enabled = bool(request.form.get("enabled"))
+    if enabled and (not raw_times or not days):
+        flash(t("sched_need_time_day"))
+        return redirect(url_for("schedule_page"))
+    with _sched_lock:
+        s = load_schedule()
+        s.update({
+            "enabled": enabled,
+            "times": raw_times,
+            "days": days,
+            "warn_minutes": [int(x) for x in raw_warn],
+            "message": message or SCHEDULE_DEFAULTS["message"],
+            "save_first": bool(request.form.get("save_first")),
+            "skip_if_stopped": bool(request.form.get("skip_if_stopped")),
+            "skip_if_players": bool(request.form.get("skip_if_players")),
+            "update_first": bool(request.form.get("update_first")),
+            "sync_mods": bool(request.form.get("sync_mods")),
+        })
+        # Ein Termin, der gerade erst vorbei ist (Nachhol-Fenster), soll durch das
+        # Speichern nicht sofort einen Neustart auslösen -> als erledigt markieren.
+        now = sched_now()
+        for dt in _occurrences(s, now):
+            if dt <= now <= dt + SCHED_GRACE:
+                s["last_slot"] = dt.strftime("%Y-%m-%d %H:%M")
+        save_schedule(s)
+    flash(t("sched_saved"))
+    return redirect(url_for("schedule_page"))
+
+
+@app.route("/schedule/now", methods=["POST"])
+@login_required
+def schedule_now():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("schedule_page"))
+    try:
+        minutes = max(0, min(60, int(request.form.get("minutes", "0"))))
+    except ValueError:
+        minutes = 0
+    s = load_schedule()
+    # Warnungen nur, soweit sie in den gewählten Countdown passen
+    s["warn_minutes"] = [w for w in s["warn_minutes"] if w <= minutes]
+    s["skip_if_players"] = False        # manuell ausgelöst = gewollt
+    target = sched_now() + timedelta(minutes=minutes, seconds=2)
+    if start_restart_job(target, "manual", s, "manual"):
+        flash(t("sched_now_started", min=minutes))
+    else:
+        flash(t("sched_job_running"))
+    return redirect(url_for("schedule_page"))
+
+
+@app.route("/schedule/cancel", methods=["POST"])
+@login_required
+def schedule_cancel():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("schedule_page"))
+    if _job["thread"] is not None:
+        _job["cancel"].set()
+        flash(t("sched_cancelled"))
+    else:
+        flash(t("sched_no_job"))
+    return redirect(url_for("schedule_page"))
+
+
+start_scheduler()
+
+
+# ---------------------------------------------------------------------------
+# Transfer: Settings + Mods von Server A nach Server B übernehmen
+#
+# Jedes Panel steuert genau einen Server. Übertragen wird ein JSON-Paket mit
+# GameUserSettings.ini, Game.ini, Mods (Reihenfolge + Namen), eigenen Karten,
+# aktiver Karte und Startoptionen. Zwei Wege:
+#   1) Export als Datei auf A herunterladen -> auf B hochladen
+#   2) B holt das Paket direkt von A (A gibt dafür ein Transfer-Token frei)
+# Ports, RCONEnabled/RCONPort und SessionName bleiben IMMER lokal (B behält seine
+# Werte). Passwörter (ServerAdminPassword + Beitrittspasswort) werden mit
+# übertragen, wenn der Teil „Passwörter“ gewählt ist (Standard). Lokale Keys
+# werden an Ort und Stelle ersetzt – die Reihenfolge der INI bleibt wie auf A.
+# Vor jedem Import wird ein Backup angelegt, das sich mit einem Klick
+# wiederherstellen lässt.
+# ---------------------------------------------------------------------------
+TRANSFER_FORMAT = "ark-panel-transfer"
+TRANSFER_VERSION = 1
+TRANSFER_PATH = CONF.get("transfer_path", os.path.join(PANEL_DIR, "transfer.json"))
+TRANSFER_BACKUP_DIR = os.path.join(PANEL_DIR, "transfer-backups")
+TRANSFER_MAX_BYTES = 8 * 1024 * 1024
+TRANSFER_KEEP_BACKUPS = 10
+# HIDDEN_KEYS (Ports/RCON/Name) gehören immer dem Zielserver. Die Passwort-Keys
+# nur dann, wenn der Teil „secrets“ NICHT gewählt ist.
+TRANSFER_SECRET_KEYS = {"ServerAdminPassword", "ServerPassword"}
+TRANSFER_PARTS = ("gus", "game", "mods", "maps", "launch", "session", "secrets")
+TRANSFER_DEFAULT_PARTS = {"gus", "game", "mods", "maps", "launch", "secrets"}
+
+app.config["MAX_CONTENT_LENGTH"] = TRANSFER_MAX_BYTES
+
+
+def load_transfer_token():
+    return _load_json(TRANSFER_PATH, {"token": ""}).get("token", "") or ""
+
+
+def save_transfer_token(tok):
+    _save_json(TRANSFER_PATH, {"token": tok})
+
+
+def _ini_local_values(text, keys):
+    """[(section, key, value)] der lokalen Werte für die geschützten Keys."""
+    vals, sec = [], ""
+    for e in parse_ini(text):
+        if e["type"] == "section":
+            sec = e["name"]
+        elif e["type"] == "kv" and e["key"] in keys:
+            vals.append((sec, e["key"], e["value"]))
+    return vals
+
+
+def _ini_value(text, section, key):
+    """Ersten Wert von key in section aus einem INI-Text lesen (oder None)."""
+    for sec, k, v in _ini_local_values(text or "", {key}):
+        if sec == section:
+            return v.split("?", 1)[0].strip() if key == "ServerAdminPassword" else v
+    return None
+
+
+def build_transfer_bundle():
+    rt = load_runtime()
+    ini = {}
+    for key in ("gus", "game"):
+        raw, _entries = read_ini(key)
+        ini[key] = raw or ""
+    labels = load_mod_labels()
+    return {
+        "format": TRANSFER_FORMAT,
+        "version": TRANSFER_VERSION,
+        "panel_version": PANEL_VERSION,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "source": rt.get("session_name", ""),
+        "ini": ini,
+        "runtime": {
+            "map": rt.get("map"),
+            "session_name": rt.get("session_name", ""),
+            "max_players": rt.get("max_players", 70),
+            "battleye": bool(rt.get("battleye", True)),
+            "extra_args": rt.get("extra_args", ""),
+            "server_password": rt.get("server_password", ""),
+            "mods": list(rt.get("mods", [])),
+        },
+        "mod_labels": {m: labels[m] for m in rt.get("mods", []) if m in labels},
+        "custom_maps": load_custom_maps(),
+    }
+
+
+def validate_transfer_bundle(data):
+    """Prüft/normalisiert ein Paket. Gibt (bundle, None) oder (None, fehler) zurück."""
+    if not isinstance(data, dict) or data.get("format") != TRANSFER_FORMAT:
+        return None, t("xfer_bad_format")
+    if int(data.get("version", 0) or 0) > TRANSFER_VERSION:
+        return None, t("xfer_bad_version")
+    ini = data.get("ini") or {}
+    rt = data.get("runtime") or {}
+    if not isinstance(ini, dict) or not isinstance(rt, dict):
+        return None, t("xfer_bad_format")
+    out = {"source": str(data.get("source", ""))[:100],
+           "created": str(data.get("created", ""))[:40],
+           "ini": {}, "runtime": {}}
+    for key in ("gus", "game"):
+        v = ini.get(key, "")
+        out["ini"][key] = v if isinstance(v, str) else ""
+    mods = [str(m) for m in rt.get("mods", []) if MOD_ID_RE.match(str(m))]
+    out["runtime"]["mods"] = list(dict.fromkeys(mods))          # Duplikate raus, Reihenfolge bleibt
+    mp = str(rt.get("map", "") or "")
+    out["runtime"]["map"] = mp if MAP_CODE_RE.match(mp) else ""
+    try:
+        out["runtime"]["max_players"] = max(1, min(500, int(rt.get("max_players", 70))))
+    except (TypeError, ValueError):
+        out["runtime"]["max_players"] = 70
+    out["runtime"]["battleye"] = bool(rt.get("battleye", True))
+    out["runtime"]["extra_args"] = str(rt.get("extra_args", "") or "").replace("\n", " ").replace("\r", " ").strip()
+    sp = rt.get("server_password")             # fehlt bei Paketen älterer Panels
+    out["runtime"]["server_password"] = None if sp is None else \
+        str(sp).replace("?", "").replace(" ", "").replace("\n", "").replace("\r", "")[:100]
+    sn = str(rt.get("session_name", "") or "")
+    out["runtime"]["session_name"] = sn.replace("?", "").replace("\n", "").replace("\r", "").strip()[:100]
+    labels = data.get("mod_labels") or {}
+    out["mod_labels"] = {str(k): str(v)[:100] for k, v in labels.items()
+                         if MOD_ID_RE.match(str(k))} if isinstance(labels, dict) else {}
+    maps = []
+    for m in data.get("custom_maps") or []:
+        if not isinstance(m, dict):
+            continue
+        code = str(m.get("code", ""))
+        mod_id = str(m.get("mod_id", "") or "")
+        if not MAP_CODE_RE.match(code) or code in OFFICIAL_CODES:
+            continue
+        if mod_id and not MOD_ID_RE.match(mod_id):
+            mod_id = ""
+        maps.append({"code": code, "name": str(m.get("name", code))[:100] or code, "mod_id": mod_id})
+    out["custom_maps"] = maps
+    return out, None
+
+
+def _transfer_backup(prune=True):
+    """Aktuellen Stand (INIs + Panel-Stores) sichern. Gibt den Backup-Namen zurück."""
+    import shutil
+    name = time.strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(TRANSFER_BACKUP_DIR, name)
+    n = 1
+    while os.path.exists(dest):
+        n += 1
+        dest = os.path.join(TRANSFER_BACKUP_DIR, "%s-%d" % (name, n))
+    os.makedirs(dest, mode=0o700)
+    files = {"GameUserSettings.ini": INI_FILES["gus"], "Game.ini": INI_FILES["game"],
+             "runtime.json": RUNTIME_PATH, "mods.json": MODS_PATH, "maps.json": MAPS_PATH}
+    manifest = {}
+    for label, src in files.items():
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(dest, label))
+            manifest[label] = True
+        else:
+            manifest[label] = False
+    _save_json(os.path.join(dest, "manifest.json"), manifest)
+    # alte Backups aufräumen
+    if not prune:
+        return os.path.basename(dest)
+    try:
+        dirs = sorted(d for d in os.listdir(TRANSFER_BACKUP_DIR)
+                      if os.path.isdir(os.path.join(TRANSFER_BACKUP_DIR, d)))
+        for d in dirs[:-TRANSFER_KEEP_BACKUPS]:
+            shutil.rmtree(os.path.join(TRANSFER_BACKUP_DIR, d), ignore_errors=True)
+    except OSError:
+        pass
+    return os.path.basename(dest)
+
+
+def list_transfer_backups():
+    try:
+        return sorted((d for d in os.listdir(TRANSFER_BACKUP_DIR)
+                       if os.path.isdir(os.path.join(TRANSFER_BACKUP_DIR, d))), reverse=True)
+    except OSError:
+        return []
+
+
+def _import_ini(key, text, with_secrets=True):
+    """Fremde INI 1:1 übernehmen. Lokal bleiben nur Ports/RCON/Sessionname
+    (HIDDEN_KEYS) und – ohne with_secrets – die Passwörter. Diese Keys werden
+    an ihrer Stelle in der fremden Datei ersetzt (Reihenfolge bleibt wie auf A),
+    doppelte Vorkommen entfernt; fehlt ein lokaler Key dort, kommt er ans Ende
+    seiner Section."""
+    local_raw, _ = read_ini(key)
+    incoming = [(sec, k) for sec, k, _v in _ini_local_values(text, TRANSFER_SECRET_KEYS)]
+    keep = set(HIDDEN_KEYS)
+    for k in TRANSFER_SECRET_KEYS:
+        # Ohne Passwort-Teil, oder Paket enthält den Key nicht (älteres Panel): lokal behalten
+        if not with_secrets or not any(ik == k for _s, ik in incoming):
+            keep.add(k)
+    local = {}
+    for sec, k, v in _ini_local_values(local_raw, keep):
+        local.setdefault((sec, k), v)            # erstes Vorkommen gilt
+
+    out, sec, placed = [], "", set()
+    sec_last = {}                                # Section -> Index der letzten Nicht-Leerzeile
+    for e in parse_ini(text):
+        if e["type"] == "section":
+            sec = e["name"]
+            out.append(e["raw"])
+            sec_last[sec] = len(out) - 1
+            continue
+        if e["type"] == "kv" and e["key"] in keep:
+            ident = (sec, e["key"])
+            if ident in local and ident not in placed:
+                out.append("%s=%s" % (e["key"], local[ident]))   # an Ort und Stelle
+                placed.add(ident)
+                sec_last[sec] = len(out) - 1
+            continue                             # Duplikat bzw. lokal nicht vorhanden -> weg
+        out.append(e["raw"])
+        if e["raw"].strip():
+            sec_last[sec] = len(out) - 1
+
+    # Lokale Keys, die im Paket fehlen, ans Ende ihrer Section
+    missing = {}
+    for ident, v in local.items():
+        if ident not in placed:
+            missing.setdefault(ident[0], []).append("%s=%s" % (ident[1], v))
+    for sname in sorted((n for n in missing if n in sec_last), key=lambda n: -sec_last[n]):
+        i = sec_last[sname] + 1
+        out[i:i] = missing.pop(sname)
+    while out and out[-1].strip() == "":
+        out.pop()
+    for sname, kv in missing.items():            # Section fehlt im Paket -> anhängen
+        if sname:
+            out += ["", "[%s]" % sname]
+        out += kv
+    write_ini(key, "\n".join(out) + "\n")
+    enforce_rcon(key)
+
+
+def apply_transfer_bundle(b, parts, mods_merge=False):
+    """Paket anwenden. Gibt (liste_der_übernommenen_teile, hinweise) zurück."""
+    done, notes = [], []
+    with _state_lock:
+        with_secrets = "secrets" in parts
+        for key in ("gus", "game"):
+            if key in parts:
+                if b["ini"].get(key, "").strip():
+                    _import_ini(key, b["ini"][key], with_secrets)
+                    done.append(INI_LABELS[key])
+                else:
+                    notes.append(t("xfer_note_empty_ini", file=INI_LABELS[key]))
+        rt = load_runtime()
+        if "maps" in parts:
+            local = {m["code"]: m for m in load_custom_maps()}
+            for m in b["custom_maps"]:
+                local[m["code"]] = m
+            save_custom_maps(list(local.values()))
+            done.append(t("xfer_part_maps"))
+        if "mods" in parts:
+            if mods_merge:
+                rt["mods"] = rt["mods"] + [m for m in b["runtime"]["mods"] if m not in rt["mods"]]
+            else:
+                rt["mods"] = list(b["runtime"]["mods"])
+            labels = load_mod_labels()
+            labels.update(b["mod_labels"])
+            save_mod_labels(labels)
+            done.append(t("xfer_part_mods_n", n=len(b["runtime"]["mods"])))
+            if rt["mods"]:
+                notes.append(t("xfer_note_sync_mods"))
+        if "maps" in parts and b["runtime"]["map"]:
+            known = {m["code"] for m in all_maps()}
+            if b["runtime"]["map"] in known:
+                rt["map"] = b["runtime"]["map"]
+            else:
+                notes.append(t("xfer_note_map_unknown", code=b["runtime"]["map"]))
+        if "launch" in parts:
+            rt["max_players"] = b["runtime"]["max_players"]
+            rt["battleye"] = b["runtime"]["battleye"]
+            rt["extra_args"] = b["runtime"]["extra_args"]
+            done.append(t("xfer_part_launch"))
+        if with_secrets:
+            # Beitrittspasswort: Quelle ist runtime.json (ark-launch.sh übergibt es
+            # bei jedem Start in die INI) – sonst wäre es nach dem Neustart wieder leer.
+            sp = b["runtime"].get("server_password")
+            if sp is None:                       # älteres Paket: aus der INI nehmen
+                sp = _ini_value(b["ini"].get("gus", ""), "ServerSettings", "ServerPassword")
+            if sp is not None:
+                rt["server_password"] = sp
+            if "gus" not in parts:               # Admin-Passwort auch ohne GUS-Import
+                apw = _ini_value(b["ini"].get("gus", ""), "ServerSettings", "ServerAdminPassword")
+                if apw:
+                    ini_set(GUS_PATH, "ServerSettings", "ServerAdminPassword", apw)
+            if sp is not None or _ini_value(b["ini"].get("gus", ""), "ServerSettings", "ServerAdminPassword"):
+                done.append(t("xfer_part_secrets"))
+            else:
+                notes.append(t("xfer_note_no_secrets"))
+        if "session" in parts and b["runtime"]["session_name"]:
+            rt["session_name"] = b["runtime"]["session_name"]
+            done.append(t("xfer_part_session"))
+        save_runtime(rt)
+    return done, notes
+
+
+def _transfer_parts_from_form():
+    return {p for p in TRANSFER_PARTS if request.form.get("part_" + p)}
+
+
+def _run_import(data):
+    """Gemeinsamer Ablauf für Datei-Upload und Direktabruf."""
+    b, err = validate_transfer_bundle(data)
+    if err:
+        flash(err)
+        return redirect(url_for("transfer_page"))
+    parts = _transfer_parts_from_form()
+    if not parts:
+        flash(t("xfer_no_parts"))
+        return redirect(url_for("transfer_page"))
+    # ARK schreibt die GameUserSettings.ini beim Beenden zurück -> nur bei gestopptem Server
+    if parts & {"gus", "game"} and service_active(SERVICE) == "active":
+        flash(t("xfer_stop_first"))
+        return redirect(url_for("transfer_page"))
+    try:
+        bk = _transfer_backup()
+        done, notes = apply_transfer_bundle(b, parts, mods_merge=bool(request.form.get("mods_merge")))
+    except OSError as e:
+        flash(t("xfer_error", err=str(e)))
+        return redirect(url_for("transfer_page"))
+    flash(t("xfer_done", src=b["source"] or "?", parts=", ".join(done) or "–", backup=bk))
+    for n in notes:
+        flash(n)
+    return redirect(url_for("transfer_page"))
+
+
+@app.route("/transfer")
+@login_required
+def transfer_page():
+    rt = load_runtime()
+    return render_template("transfer.html",
+                           token=load_transfer_token(),
+                           backups=list_transfer_backups(),
+                           running=(service_active(SERVICE) == "active"),
+                           defaults=TRANSFER_DEFAULT_PARTS,
+                           mods_count=len(rt["mods"]),
+                           maps_count=len(load_custom_maps()),
+                           self_url=request.host_url.rstrip("/"))
+
+
+@app.route("/transfer/download")
+@login_required
+def transfer_download():
+    bundle = build_transfer_bundle()
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", bundle["source"] or "ark").strip("_") or "ark"
+    resp = app.response_class(json.dumps(bundle, indent=2, ensure_ascii=False),
+                              mimetype="application/json")
+    resp.headers["Content-Disposition"] = 'attachment; filename="ark-transfer-%s-%s.json"' % (
+        name, time.strftime("%Y%m%d-%H%M"))
+    return resp
+
+
+@app.route("/transfer/export")
+def transfer_export():
+    """Maschinen-Endpunkt für den Direktabruf durch ein anderes Panel (Token nötig)."""
+    tok = load_transfer_token()
+    given = request.headers.get("X-Transfer-Token", "")
+    if not tok or not given or not secrets.compare_digest(tok, given):
+        return jsonify(error="forbidden"), 403
+    return jsonify(build_transfer_bundle())
+
+
+@app.route("/transfer/token", methods=["POST"])
+@login_required
+def transfer_token():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("transfer_page"))
+    if request.form.get("act") == "revoke":
+        save_transfer_token("")
+        flash(t("xfer_token_revoked"))
+    else:
+        save_transfer_token(secrets.token_urlsafe(24))
+        flash(t("xfer_token_created"))
+    return redirect(url_for("transfer_page"))
+
+
+@app.route("/transfer/upload", methods=["POST"])
+@login_required
+def transfer_upload():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("transfer_page"))
+    f = request.files.get("bundle")
+    if not f or not f.filename:
+        flash(t("xfer_no_file"))
+        return redirect(url_for("transfer_page"))
+    try:
+        data = json.loads(f.read(TRANSFER_MAX_BYTES).decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        flash(t("xfer_bad_format"))
+        return redirect(url_for("transfer_page"))
+    return _run_import(data)
+
+
+@app.route("/transfer/pull", methods=["POST"])
+@login_required
+def transfer_pull():
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("transfer_page"))
+    url = request.form.get("url", "").strip().rstrip("/")
+    tok = request.form.get("token", "").strip()
+    if url and "://" not in url:
+        url = "http://" + url
+    if not re.match(r"^https?://[A-Za-z0-9.\-\[\]:]+(/.*)?$", url) or not tok:
+        flash(t("xfer_pull_bad_input"))
+        return redirect(url_for("transfer_page"))
+    if not url.endswith("/transfer/export"):
+        url += "/transfer/export"
+    try:
+        req = urllib.request.Request(url, headers={"X-Transfer-Token": tok,
+                                                   "User-Agent": "ark-panel/" + PANEL_VERSION})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read(TRANSFER_MAX_BYTES + 1)
+        if len(body) > TRANSFER_MAX_BYTES:
+            raise ValueError("too large")
+        data = json.loads(body.decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        flash(t("xfer_pull_denied") if e.code == 403 else t("xfer_pull_failed", err="HTTP %d" % e.code))
+        return redirect(url_for("transfer_page"))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        flash(t("xfer_pull_failed", err=str(getattr(e, "reason", e))))
+        return redirect(url_for("transfer_page"))
+    return _run_import(data)
+
+
+@app.route("/transfer/restore", methods=["POST"])
+@login_required
+def transfer_restore():
+    """Ein Import-Backup zurückspielen (vorher wird der aktuelle Stand gesichert)."""
+    import shutil
+    if not check_csrf():
+        flash(t("csrf_invalid"))
+        return redirect(url_for("transfer_page"))
+    name = request.form.get("backup", "")
+    src = os.path.join(TRANSFER_BACKUP_DIR, name)
+    if not re.match(r"^[0-9-]{8,24}$", name) or not os.path.isdir(src):
+        flash(t("xfer_backup_missing"))
+        return redirect(url_for("transfer_page"))
+    if service_active(SERVICE) == "active":
+        flash(t("xfer_stop_first"))
+        return redirect(url_for("transfer_page"))
+    try:
+        with _state_lock:
+            _transfer_backup(prune=False)   # src darf beim Aufräumen nicht verschwinden
+            for label, key in (("GameUserSettings.ini", "gus"), ("Game.ini", "game")):
+                p = os.path.join(src, label)
+                if os.path.exists(p):
+                    write_ini(key, _read_text(p))
+            for label, dst in (("runtime.json", RUNTIME_PATH), ("mods.json", MODS_PATH),
+                               ("maps.json", MAPS_PATH)):
+                p = os.path.join(src, label)
+                if os.path.exists(p):
+                    tmp = dst + ".tmp"
+                    shutil.copy2(p, tmp)
+                    os.chmod(tmp, 0o600)
+                    os.replace(tmp, dst)
+    except OSError as e:
+        flash(t("xfer_error", err=str(e)))
+        return redirect(url_for("transfer_page"))
+    flash(t("xfer_restored", name=name))
+    return redirect(url_for("transfer_page"))
 
 
 # ---------------------------------------------------------------------------

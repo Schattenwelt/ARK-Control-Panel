@@ -7,3 +7,7 @@ mods.json
 *.pyc
 __pycache__/
 venv/
+schedule.json
+transfer.json
+transfer-backups/
+last_sync.json

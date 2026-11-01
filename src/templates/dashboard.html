@@ -58,6 +58,13 @@
       <div class="res-bar"><div class="res-bar-fill" id="res-disk-bar"></div></div>
     </div>
   </div>
+  <div class="update-row">
+    <span class="res-label">{{ t('build_label') }}</span>
+    <code class="mono" id="build-installed">{{ installed_build or '–' }}</code>
+    <button class="btn tiny" type="button" id="btn-update-check"
+            onclick="checkUpdate()">{{ t('update_check_btn') }}</button>
+    <span class="update-badge mono" id="update-badge"></span>
+  </div>
 </section>
 
 <section class="panel">
@@ -280,5 +287,27 @@ pollPlayers();
 setInterval(poll, 4000);
 setInterval(pollPlayers, 8000);
 document.addEventListener('DOMContentLoaded', () => logEl.scrollTop = logEl.scrollHeight);
+
+const UT = {
+  checking: {{ t('update_checking')|tojson }},
+  current: {{ t('update_current')|tojson }},
+  available: {{ t('update_available')|tojson }},
+  unknown: {{ t('update_unknown')|tojson }}
+};
+async function checkUpdate() {
+  const badge = document.getElementById('update-badge');
+  const btn = document.getElementById('btn-update-check');
+  badge.className = 'update-badge mono'; badge.textContent = UT.checking; btn.disabled = true;
+  try {
+    const body = new URLSearchParams({ csrf: CSRF });
+    const d = await (await fetch("{{ url_for('update_check') }}", { method: 'POST', body })).json();
+    if (d.installed) document.getElementById('build-installed').textContent = d.installed;
+    if (d.status === 'current') { badge.textContent = UT.current; badge.classList.add('ok'); }
+    else if (d.status === 'available') {
+      badge.textContent = UT.available + (d.latest ? ' → ' + d.latest : ''); badge.classList.add('avail');
+    } else { badge.textContent = UT.unknown; badge.classList.add('warn'); }
+  } catch (e) { badge.textContent = UT.unknown; badge.classList.add('warn'); }
+  btn.disabled = false;
+}
 </script>
 {% endblock %}

@@ -259,6 +259,8 @@ conf = {
     "maps_path": "/opt/ark-panel/maps.json",
     "mods_path": "/opt/ark-panel/mods.json",
     "rcon_host": "127.0.0.1",
+    "appid": "376030",
+    "tz": "Europe/Berlin",
 }
 with open("/opt/ark-panel/panel.json", "w") as fh:
     json.dump(conf, fh, indent=2)

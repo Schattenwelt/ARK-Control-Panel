@@ -30,6 +30,17 @@ The interface is available in **English and German** (switchable at the top).
 - **Connect box** on the dashboard: shows the address to join with, auto-detects
   the public IP (falls back to the local address), and distinguishes the Steam
   server-browser port (query) from the in-game `open` port (game)
+- **Scheduled restarts** with in-game countdown broadcasts, optional save,
+  game update and mod sync beforehand (see [Scheduled restarts](#scheduled-restarts))
+- **Save management**: restore one of ARK's automatic backups, make a manual
+  backup, or start a map fresh (see [Saves](#saves))
+- **Transfer** settings & mods from one panel to another (file or direct pull,
+  see [Transfer](#transfer-settings--mods-server-a--server-b))
+- **Update check**: installed build vs. latest public build (Steam), one click
+  on the dashboard
+- Config editor hides panel-managed keys (RCON, ports, session name, ActiveMods)
+  and enforces RCON on every save
+- Server log falls back to `ShooterGame.log` when the journal is empty
 - **Multiple user accounts**: create / reset / delete; all equal
 - Runs as an unprivileged user behind a narrow `sudo` allow-list
 
@@ -118,6 +129,72 @@ never installs them, so relying on it just leaves you with a modless server. The
 > This applies to ARK: **Survival Evolved** (Steam Workshop). ARK: **Survival
 > Ascended** uses a different mod system (CurseForge) and is not supported here.
 
+## Scheduled restarts
+
+Under **Restarts** you set automatic restarts from the web UI: one or more times
+(e.g. `05:00` or `06:00, 18:00`), weekdays, in-game countdown broadcasts
+(default 15/10/5/1 min) with a custom message (`{min}` = remaining minutes), and
+options to save the world first and to skip when the server is stopped or players
+are online. A running countdown can be cancelled, and a one-off restart with
+countdown can be triggered by hand.
+
+ARK: SE updates neither the game nor Workshop mods by itself, so two extra
+options exist:
+
+- **Update the game first** – runs `ark-update.service` (SteamCMD + save backup)
+- **Sync mods first** – runs `ark-mods.service` (download/extract all mods)
+
+With either enabled the server is stopped, updated and started again instead of a
+plain restart. Everything runs as a background thread inside the panel using the
+existing sudo rules – no extra units. Times use `tz` from `panel.json` (default
+`Europe/Berlin`); settings live in `/opt/ark-panel/schedule.json`.
+
+## Saves
+
+ARK: SE keeps all maps flat in `ShooterGame/Saved/SavedArks/`: `<Map>.ark` is the
+active world, `<Map>_DD.MM.YYYY_HH.MM.SS.ark` are the server's own backups, and
+`.arkprofile` / `.arktribe` (players and tribes) are shared by all maps. Under
+**Saves** (server stopped) you can, per map:
+
+- **Restore** a backup – the current `<Map>.ark` is kept as `.corrupt-<ts>`
+- **Back up now** – writes `<Map>_manual_<timestamp>.ark`
+- **Fresh world** – moves the map's save, backups and `.bak` files to
+  `SavedArks/_alt/<Map>_<ts>/`; optionally also all player profiles and tribes
+  (this affects every map on the server)
+
+Nothing is ever deleted. The panel runs as the same user as the server, so no
+extra sudo rule is needed.
+
+## Transfer settings & mods (server A → server B)
+
+Under **Transfer** you copy a server's setup to another ARK panel:
+`GameUserSettings.ini`, `Game.ini`, mods (load order + names), custom maps, the
+active map, launch options (max players, BattlEye, extra args), optionally the
+session name and the passwords. Mods can replace or be merged into the existing
+list.
+
+- **File:** on server A click *Download export (.json)*, on server B upload it.
+- **Direct pull:** on server A create a *transfer token*, on server B enter A's
+  address plus the token. B fetches `GET /transfer/export` with the
+  `X-Transfer-Token` header. Revoke the token afterwards.
+
+Ports, `RCONEnabled`/`RCONPort`, `ActiveMods` and the session name always stay
+local. `ServerAdminPassword` and the join password are transferred when
+**Passwords** is ticked (default) – the export file and the direct pull then
+contain them in plain text. Importing INI files requires the server to be stopped
+(ARK rewrites `GameUserSettings.ini` on shutdown). After importing mods, click
+**Sync mods**. Before every import the previous state is saved to
+`/opt/ark-panel/transfer-backups/` (last 10) and can be restored with one click.
+Transfer files of the ASA panel are not compatible.
+
+## Auto-update (panel)
+
+```bash
+sudo bash scripts/setup-autoupdate.sh            # daily ~04:30
+sudo bash scripts/setup-autoupdate.sh --run-now
+```
+Pulls this repo and redeploys the panel only (not the game server).
+
 ## Updating the panel
 
 ```bash
@@ -144,6 +221,7 @@ restarts the server and checks the port.
 install.sh            Full installer (run once in a fresh container)
 scripts/update.sh     Refresh panel code from the repo, restart the panel
 scripts/repair.sh     Ensure RCON is set up in GameUserSettings.ini
+scripts/setup-autoupdate.sh  Daily panel self-update timer
 src/                  Panel source (Flask app, RCON, i18n, templates, CSS)
 src/ark-launch.sh     Start wrapper (builds the start line, writes ActiveMods)
 src/ark-update.sh     SteamCMD update + save backups
@@ -157,6 +235,9 @@ src/ark-mods.py       Mod sync: download, .z extraction, .mod generation
 - `runtime.json` – launch parameters: map, mods, ports, public address, extra args
 - `maps.json` – custom/mod maps
 - `mods.json` – optional display names for mod IDs
+- `schedule.json` – scheduled restarts (times, days, options, last result)
+- `transfer.json` – transfer token (empty = direct pull disabled)
+- `transfer-backups/` – state before each transfer import (last 10)
 
 ## systemd services
 

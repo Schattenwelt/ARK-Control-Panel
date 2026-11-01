@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_schedule') }} · ARK Panel{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ t('sched_title') }}</h2>
+    {% if s.enabled %}<span class="pill">{{ t('sched_on') }}</span>{% else %}<span class="pill off">{{ t('sched_off') }}</span>{% endif %}
+  </div>
+  <p class="muted small" style="margin-top:0">{{ t('sched_intro') }}</p>
+
+  <div class="sched-status">
+    <div><span class="fname">{{ t('sched_next') }}</span>
+      <span class="mono">{{ next_restart or '—' }}</span></div>
+    <div><span class="fname">{{ t('sched_last') }}</span>
+      <span class="mono">{{ s.last_run or '—' }}</span>
+      {% if last_result %}<span class="muted small">{{ last_result }}</span>{% endif %}</div>
+    <div><span class="fname">{{ t('sched_tz') }}</span>
+      <span class="mono">{{ tz_name }} · {{ now }}</span></div>
+  </div>
+
+  {% if job_active %}
+  <div class="flash sched-running">
+    <p>⏳ {{ t('sched_job_active', time=job_target) }}</p>
+    <form method="post" action="{{ url_for('schedule_cancel') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="btn tiny danger" type="submit">{{ t('sched_cancel_btn') }}</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('sched_settings') }}</h2></div>
+  <form method="post" action="{{ url_for('schedule_save') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+
+    <label class="field check">
+      <input type="checkbox" name="enabled" {{ 'checked' if s.enabled }}>
+      <span class="fname">{{ t('sched_enabled') }}</span>
+    </label>
+
+    <div class="grid" style="margin-top:12px">
+      <label class="field">
+        <span class="fname">{{ t('sched_times') }}</span>
+        <input name="times" value="{{ s.times|join(', ') }}" placeholder="05:00" spellcheck="false">
+        <span class="muted small">{{ t('sched_times_hint') }}</span>
+      </label>
+      <label class="field">
+        <span class="fname">{{ t('sched_warn') }}</span>
+        <input name="warn_minutes" value="{{ s.warn_minutes|join(', ') }}" placeholder="15, 10, 5, 1" spellcheck="false">
+        <span class="muted small">{{ t('sched_warn_hint') }}</span>
+      </label>
+    </div>
+
+    <div class="field" style="margin-top:12px">
+      <span class="fname">{{ t('sched_days') }}</span>
+      <div class="day-picker">
+        {% for key, idx in weekdays %}
+        <label class="day">
+          <input type="checkbox" name="days" value="{{ idx }}" {{ 'checked' if idx in s.days }}>
+          <span>{{ t('wd_' + key) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <label class="field" style="margin-top:12px">
+      <span class="fname">{{ t('sched_message') }}</span>
+      <input name="message" value="{{ s.message }}" maxlength="200" spellcheck="false">
+      <span class="muted small">{{ t('sched_message_hint') }}</span>
+    </label>
+
+    <div class="sched-opts">
+      <label class="field check">
+        <input type="checkbox" name="save_first" {{ 'checked' if s.save_first }}>
+        <span>{{ t('sched_save_first') }}</span>
+      </label>
+      <label class="field check">
+        <input type="checkbox" name="skip_if_stopped" {{ 'checked' if s.skip_if_stopped }}>
+        <span>{{ t('sched_skip_stopped') }}</span>
+      </label>
+      <label class="field check">
+        <input type="checkbox" name="skip_if_players" {{ 'checked' if s.skip_if_players }}>
+        <span>{{ t('sched_skip_players') }}</span>
+      </label>
+      <label class="field check">
+        <input type="checkbox" name="update_first" {{ 'checked' if s.update_first }}>
+        <span>{{ t('sched_update_first') }}</span>
+      </label>
+      <label class="field check">
+        <input type="checkbox" name="sync_mods" {{ 'checked' if s.sync_mods }}>
+        <span>{{ t('sched_sync_mods') }}</span>
+      </label>
+    </div>
+    <p class="hint-line">{{ t('sched_update_hint') }}</p>
+
+    <div class="actions">
+      <button class="btn primary" type="submit">{{ t('save') }}</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ t('sched_now_title') }}</h2></div>
+  <p class="muted small" style="margin-top:0">{{ t('sched_now_intro') }}</p>
+  <form method="post" action="{{ url_for('schedule_now') }}" class="map-add"
+        onsubmit='return confirm({{ t('sched_now_confirm')|tojson }})'>
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <select name="minutes">
+      {% for m in [0, 1, 5, 10, 15, 30] %}
+      <option value="{{ m }}" {{ 'selected' if m == 5 }}>{{ t('sched_now_opt', min=m) if m else t('sched_now_opt0') }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn warn" type="submit" {{ 'disabled' if job_active }}>{{ t('sched_now_btn') }}</button>
+  </form>
+</section>
+{% endblock %}

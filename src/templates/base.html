@@ -19,6 +19,9 @@
       <a href="{{ url_for('maps_page') }}" class="{{ 'on' if request.endpoint == 'maps_page' }}">{{ t('nav_maps') }}</a>
       <a href="{{ url_for('mods_page') }}" class="{{ 'on' if request.endpoint == 'mods_page' }}">{{ t('nav_mods') }}</a>
       <a href="{{ url_for('config') }}" class="{{ 'on' if request.endpoint == 'config' }}">{{ t('nav_config') }}</a>
+      <a href="{{ url_for('schedule_page') }}" class="{{ 'on' if request.endpoint == 'schedule_page' }}">{{ t('nav_schedule') }}</a>
+      <a href="{{ url_for('saves_page') }}" class="{{ 'on' if request.endpoint == 'saves_page' }}">{{ t('nav_saves') }}</a>
+      <a href="{{ url_for('transfer_page') }}" class="{{ 'on' if request.endpoint == 'transfer_page' }}">{{ t('nav_transfer') }}</a>
       <a href="{{ url_for('users_page') }}" class="{{ 'on' if request.endpoint == 'users_page' }}">{{ t('nav_users') }}</a>
       <a href="{{ url_for('account') }}" class="{{ 'on' if request.endpoint == 'account' }}">{{ t('nav_account') }}</a>
       {% if me %}<span class="nav-user">{{ me.name }}</span>{% endif %}
@@ -42,5 +45,6 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <footer class="foot muted small">ARK Control Panel · v{{ PANEL_VERSION }}</footer>
 </body>
 </html>

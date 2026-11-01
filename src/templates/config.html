@@ -14,6 +14,10 @@
 <div class="notice">{{ t('cfg_notice', path=ini_path) }}</div>
 {% endif %}
 
+{% if file_key == 'gus' %}
+<div class="notice">{{ t('cfg_rcon_managed') }} {{ t('cfg_sessionname_note') }}</div>
+{% endif %}
+
 <div class="tabs">
   <button class="tab on" data-tab="form">{{ t('tab_settings') }}</button>
   <button class="tab" data-tab="raw">{{ t('tab_raw') }}</button>
@@ -34,7 +38,7 @@
             {% for f in g.fields %}
             <label class="field">
               <span class="fname mono">{{ f.key }}</span>
-              <input name="field_{{ f.id }}" value="{{ f.value }}" spellcheck="false">
+              <input name="field_{{ f.id }}" value="{{ f.display }}" spellcheck="false">
             </label>
             {% endfor %}
           </div>
@@ -45,6 +49,7 @@
         <button class="btn primary" type="submit">{{ t('save') }}</button>
         <span class="muted">{{ t('cfg_save_hint') }}</span>
       </div>
+      <p class="muted small" style="margin-top:4px">{{ t('cfg_hidden_note') }}</p>
     {% endif %}
   </form>
 </section>
