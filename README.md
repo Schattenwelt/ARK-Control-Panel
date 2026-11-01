@@ -96,7 +96,7 @@ Join from the Steam server browser via `IP:27015`.
 Game, query and RCON port are chosen at install time (the installer asks; press
 Enter for the defaults 7777/27015/27020, or pass `GAME_PORT=… QUERY_PORT=…
 RCON_PORT=… PANEL_PORT=…` to skip the questions). They are stored in `panel.json`
-and **locked everywhere**: the launch-parameter form shows them read-only, the
+and **locked everywhere**: the launch-parameter form no longer offers them (only a 🔒 note), the
 config editor resets `RCONPort`/`Port`/`QueryPort` on every save (field and raw
 editor), a transfer import never touches them, and `ark-launch.sh` reads them from
 `panel.json`, so even a hand-edited `runtime.json` can't change them. Remember that

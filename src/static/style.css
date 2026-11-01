@@ -548,4 +548,3 @@ input[type=file] { padding: 7px 9px; cursor: pointer; }
 
 .save-players { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .save-players span { font-size: .85rem; }
-input.locked { opacity: .65; cursor: not-allowed; }

@@ -84,23 +84,12 @@
         <span class="fname">{{ t('launch_maxplayers') }}</span>
         <input name="max_players" value="{{ rt.max_players }}" inputmode="numeric">
       </label>
-      <label class="field">
-        <span class="fname">{{ t('launch_port') }} 🔒</span>
-        <input value="{{ fixed_ports.game_port }}" class="locked" disabled title="{{ t('ports_locked_short') }}">
-      </label>
-      <label class="field">
-        <span class="fname">{{ t('launch_query') }} 🔒</span>
-        <input value="{{ fixed_ports.query_port }}" class="locked" disabled title="{{ t('ports_locked_short') }}">
-      </label>
-      <label class="field">
-        <span class="fname">{{ t('launch_rconport') }} 🔒</span>
-        <input value="{{ fixed_ports.rcon_port }}" class="locked" disabled title="{{ t('ports_locked_short') }}">
-      </label>
       <label class="field check">
         <span class="fname">{{ t('launch_battleye') }}</span>
         <input type="checkbox" name="battleye" {{ 'checked' if rt.battleye }}>
       </label>
     </div>
+    <p class="muted small" style="margin-top:10px">🔒 {{ t('ports_locked_note', game=fixed_ports.game_port, raw=fixed_ports.game_port + 1, query=fixed_ports.query_port, rcon=fixed_ports.rcon_port) }}</p>
     <label class="field" style="margin-top:12px">
       <span class="fname">{{ t('launch_public') }}</span>
       <input name="public_address" value="{{ rt.public_address }}" placeholder="{{ t('launch_public_ph') }}" spellcheck="false">
@@ -113,7 +102,6 @@
       <span class="fname">{{ t('launch_extra') }}</span>
       <input name="extra_args" value="{{ rt.extra_args }}" placeholder="{{ t('launch_extra_ph') }}" spellcheck="false">
     </label>
-    <p class="muted small" style="margin-top:10px">🔒 {{ t('ports_locked_note', game=fixed_ports.game_port, raw=fixed_ports.game_port + 1, query=fixed_ports.query_port, rcon=fixed_ports.rcon_port) }}</p>
     <div class="actions">
       <button class="btn primary" type="submit">{{ t('launch_save_btn') }}</button>
     </div>

@@ -313,9 +313,8 @@ TRANSLATIONS = {
                   "en": "Raw file saved. Restart the server to apply."},
 
     # -- Erweiterungen (portiert aus dem ASA-Panel) --
-    "ports_locked_short": {"de": "Beim Installieren festgelegt – gesperrt", "en": "Set at install time – locked"},
-    "ports_locked_note": {"de": "Ports sind beim Installieren festgelegt und überall gesperrt – Spielport {game}/UDP (ARK nutzt zusätzlich {raw}/UDP), Query-Port {query}/UDP, RCON-Port {rcon}/TCP (nur intern). Ändern nur per Neuinstallation bzw. in /opt/ark-panel/panel.json.",
-                          "en": "Ports are set at install time and locked everywhere – game port {game}/UDP (ARK also uses {raw}/UDP), query port {query}/UDP, RCON port {rcon}/TCP (internal only). Change only by reinstalling or in /opt/ark-panel/panel.json."},
+    "ports_locked_note": {"de": "Ports sind beim Installieren festgelegt und hier gesperrt – Spiel-Port {game}/UDP (+{raw}/UDP), Query-Port {query}/UDP, RCON-Port {rcon} (nur intern).",
+                          "en": "Ports are set at install time and locked here – game port {game}/UDP (+{raw}/UDP), query port {query}/UDP, RCON port {rcon} (internal only)."},
     'nav_saves': {"de": "Speicherstand", "en": "Saves"},
     'saves_title': {"de": "Speicherstand-Verwaltung", "en": "Save management"},
     'saves_intro': {"de": "Backups wiederherstellen, ein manuelles Backup anlegen oder eine Welt frisch starten. Aktionen nur bei gestopptem Server – sonst überschreibt der laufende Server die Dateien gleich wieder. Es wird nichts gelöscht: eine ersetzte Save bleibt als .corrupt-… liegen, eine zurückgesetzte Welt wandert nach SavedArks/{dir}/.", "en": "Restore a backup, make a manual backup or start a world fresh. Only while the server is stopped – otherwise the running server overwrites the files again. Nothing is deleted: a replaced save is kept as .corrupt-…, a reset world is moved to SavedArks/{dir}/."},
