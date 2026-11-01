@@ -3,7 +3,9 @@
 # ServerAdminPassword existiert. Stoppt/startet den Server dafür kurz.
 set -euo pipefail
 GUS="/home/ark/arkserver/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini"
-SERVICE="ark.service"; RCON_PORT="27020"; WAIT_SECONDS=240
+SERVICE="ark.service"; WAIT_SECONDS=240
+# RCON-Port: fest aus panel.json (beim Installieren gesperrt), sonst Standard
+RCON_PORT="$(python3 -c 'import json;print(int(json.load(open("/opt/ark-panel/panel.json")).get("rcon_port",27020)))' 2>/dev/null || echo 27020)"
 [ "$(id -u)" -eq 0 ] || { echo "Bitte als root ausführen." >&2; exit 1; }
 mkdir -p "$(dirname "$GUS")"
 cp -a "$GUS" "${GUS}.bak.$(date +%s)" 2>/dev/null || true

@@ -17,7 +17,17 @@ ARK_USER="ark"
 ARK_HOME="/home/ark"
 INSTALL_DIR="/home/ark/arkserver"
 PANEL_DIR="/opt/ark-panel"
+# Ports: per Umgebungsvariable vorgeben (dann keine Abfrage) oder interaktiv wählen.
+# Spiel-, Query- und RCON-Port werden in panel.json festgeschrieben und sind im
+# Panel überall gesperrt.
+PANEL_PORT_ENV="${PANEL_PORT:-}"
+GAME_PORT_ENV="${GAME_PORT:-}"
+QUERY_PORT_ENV="${QUERY_PORT:-}"
+RCON_PORT_ENV="${RCON_PORT:-}"
 PANEL_PORT="${PANEL_PORT:-80}"         # Port des Web-Panels
+GAME_PORT="${GAME_PORT:-7777}"         # Spielport (ARK nutzt zusätzlich GAME_PORT+1)
+QUERY_PORT="${QUERY_PORT:-27015}"      # Steam-Query-Port (Serverbrowser)
+RCON_PORT="${RCON_PORT:-27020}"        # RCON (nur intern)
 APPID="376030"
 STEAMCMD="/usr/games/steamcmd"
 
@@ -63,6 +73,52 @@ if [ -z "$PANEL_PASS" ]; then
         [ "$PANEL_PASS" = "$P2" ] && break || warn "Passwörter stimmen nicht überein."
     done
 fi
+
+# ------------------------- Ports abfragen -----------------------------------
+# Belegt? (proto: tcp|udp) – best effort
+port_in_use() {
+    command -v ss >/dev/null 2>&1 || return 1
+    if [ "$2" = "udp" ]; then ss -lunH 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"
+    else ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"; fi
+}
+# ask_port <Variablenname> <Beschriftung> <Proto> <bereits vergebene Ports...>
+ask_port() {
+    local var="$1" label="$2" proto="$3"; shift 3
+    local def="${!var}" val
+    while :; do
+        read -rp "$label [$def]: " val; val="${val:-$def}"
+        if ! [[ "$val" =~ ^[0-9]+$ ]] || [ "$val" -lt 1 ] || [ "$val" -gt 65535 ]; then
+            warn "Ungültiger Port: $val (1–65535)."; continue
+        fi
+        local taken="" p
+        for p in "$@"; do [ "$p" = "$val" ] && taken=1; done
+        [ -n "$taken" ] && { warn "Port $val ist schon für etwas anderes vergeben."; continue; }
+        if port_in_use "$val" "$proto"; then
+            warn "Port $val/$proto ist auf diesem System bereits belegt."
+            read -rp "Trotzdem verwenden? [j/N]: " yn
+            [[ "$yn" =~ ^[jJyY]$ ]] || continue
+        fi
+        printf -v "$var" '%s' "$val"; break
+    done
+}
+
+if [ -t 0 ] && { [ -z "$GAME_PORT_ENV" ] || [ -z "$QUERY_PORT_ENV" ] || [ -z "$RCON_PORT_ENV" ] || [ -z "$PANEL_PORT_ENV" ]; }; then
+    echo
+    echo "Ports festlegen (Enter = Vorgabe übernehmen). Sie werden im Panel gesperrt."
+    [ -n "$GAME_PORT_ENV" ]  || ask_port GAME_PORT  "Spielport (UDP, ARK nutzt zusätzlich +1)" udp
+    [ -n "$QUERY_PORT_ENV" ] || ask_port QUERY_PORT "Query-Port (UDP)"     udp "$GAME_PORT" "$((GAME_PORT+1))"
+    [ -n "$RCON_PORT_ENV" ]  || ask_port RCON_PORT  "RCON-Port (TCP)"      tcp
+    [ -n "$PANEL_PORT_ENV" ] || ask_port PANEL_PORT "Web-Panel-Port (TCP)" tcp "$RCON_PORT"
+fi
+# Plausibilität auch bei Vorgabe per Umgebungsvariable
+for p in "$GAME_PORT" "$QUERY_PORT" "$RCON_PORT" "$PANEL_PORT"; do
+    [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1 ] && [ "$p" -le 65535 ] || die "Ungültiger Port: $p"
+done
+[ "$GAME_PORT" -lt 65535 ] || die "Spielport muss < 65535 sein (ARK nutzt Spielport+1)."
+[ "$QUERY_PORT" != "$GAME_PORT" ] && [ "$QUERY_PORT" != "$((GAME_PORT+1))" ] \
+    || die "Query-Port darf nicht Spielport oder Spielport+1 sein ($QUERY_PORT)."
+[ "$RCON_PORT" != "$PANEL_PORT" ] || die "RCON-Port und Panel-Port dürfen nicht gleich sein ($RCON_PORT)."
+echo "Ports: Spiel ${GAME_PORT}+$((GAME_PORT+1))/UDP · Query ${QUERY_PORT}/UDP · RCON ${RCON_PORT}/TCP · Panel ${PANEL_PORT}/TCP"
 
 # ------------------------- Pakete installieren ------------------------------
 msg "Aktualisiere Paketquellen und installiere Abhängigkeiten ..."
@@ -126,7 +182,7 @@ if [ ! -f "$GUS" ]; then
 [ServerSettings]
 ServerAdminPassword=$RCON_PW
 RCONEnabled=True
-RCONPort=27020
+RCONPort=$RCON_PORT
 ServerPassword=
 allowThirdPersonPlayer=True
 
@@ -244,6 +300,7 @@ python3 -m venv "$PANEL_DIR/venv"
 # ------------------------- panel.json + Stores ------------------------------
 msg "Erzeuge Panel-Konfiguration, Laufzeitdaten und ersten Benutzer ..."
 PANEL_USER="$PANEL_USER" PANEL_PASS="$PANEL_PASS" \
+GAME_PORT="$GAME_PORT" QUERY_PORT="$QUERY_PORT" RCON_PORT="$RCON_PORT" \
 "$PANEL_DIR/venv/bin/python" - <<'PY'
 import json, os, secrets
 from werkzeug.security import generate_password_hash
@@ -261,6 +318,10 @@ conf = {
     "rcon_host": "127.0.0.1",
     "appid": "376030",
     "tz": "Europe/Berlin",
+    # feste Ports – im Panel überall gesperrt
+    "game_port": int(os.environ["GAME_PORT"]),
+    "query_port": int(os.environ["QUERY_PORT"]),
+    "rcon_port": int(os.environ["RCON_PORT"]),
 }
 with open("/opt/ark-panel/panel.json", "w") as fh:
     json.dump(conf, fh, indent=2)
@@ -269,9 +330,9 @@ runtime = {
     "map": "TheIsland",
     "session_name": "ARK Server",
     "max_players": 70,
-    "port": 7777,
-    "query_port": 27015,
-    "rcon_port": 27020,
+    "port": int(os.environ["GAME_PORT"]),
+    "query_port": int(os.environ["QUERY_PORT"]),
+    "rcon_port": int(os.environ["RCON_PORT"]),
     "battleye": True,
     "automanaged_mods": False,
     "mods": [],
@@ -324,8 +385,10 @@ $(printf '\033[1;32m')==========================================================
   Login:       Benutzer '${PANEL_USER}' + dein gewähltes Passwort
 
   Ports (in Firewall/OPNsense freigeben):
-    7777/UDP  Spielport        27015/UDP  Query
-    27020/TCP RCON (nur intern nötig, kann zu bleiben)
+    ${GAME_PORT}/UDP + $((GAME_PORT+1))/UDP  Spielport     ${QUERY_PORT}/UDP  Query
+    ${RCON_PORT}/TCP RCON (nur intern nötig, kann zu bleiben)
+    Die Ports sind im Panel gesperrt (Änderung nur per Neuinstallation
+    bzw. in $PANEL_DIR/panel.json + Panel-Neustart).
 
   RCON/Admin:  ServerAdminPassword (= RCON- und In-Game-Admin-Passwort): ${RCON_PW}
                -> bitte notieren.

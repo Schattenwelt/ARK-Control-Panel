@@ -54,6 +54,31 @@ APPID = str(CONF.get("appid", "376030"))
 # Panel-Version (wird im Footer angezeigt; kein Git-/Commit-Bezug in der UI)
 PANEL_VERSION = "1.1.0"
 
+# Feste Ports: beim Installieren gewählt und in panel.json abgelegt. Sie sind im
+# Panel ÜBERALL gesperrt – runtime.json, Formulare, INI-Editor und Transfer können
+# sie nicht ändern; ark-launch.sh liest sie ebenfalls aus panel.json.
+# Ältere Installationen ohne diese Keys: Werte aus runtime.json übernehmen (und
+# ebenfalls sperren); scripts/update.sh schreibt sie dann fest in panel.json.
+def _fixed_ports():
+    try:
+        with open(CONF.get("runtime_path", os.path.join(os.path.dirname(CONFIG_PATH), "runtime.json")),
+                  "r", encoding="utf-8") as fh:
+            rt = json.load(fh)
+    except (OSError, ValueError):
+        rt = {}
+    out = {}
+    for key, rkey, default in (("game_port", "port", 7777), ("query_port", "query_port", 27015),
+                               ("rcon_port", "rcon_port", 27020)):
+        try:
+            out[key] = int(CONF.get(key, rt.get(rkey, default)))
+        except (TypeError, ValueError):
+            out[key] = default
+    return out
+
+
+FIXED_PORTS = _fixed_ports()
+PORTS_LOCKED = True
+
 app = Flask(__name__)
 app.secret_key = CONF["secret_key"]
 
@@ -123,10 +148,16 @@ def load_runtime():
     merged = dict(RUNTIME_DEFAULTS)
     merged.update({k: data.get(k, v) for k, v in RUNTIME_DEFAULTS.items()})
     merged["mods"] = [str(m) for m in merged.get("mods", []) if str(m).isdigit()]
+    # feste Ports haben immer Vorrang
+    merged["port"] = FIXED_PORTS["game_port"]
+    merged["query_port"] = FIXED_PORTS["query_port"]
+    merged["rcon_port"] = FIXED_PORTS["rcon_port"]
     return merged
 
 
 def save_runtime(rt):
+    rt = dict(rt, port=FIXED_PORTS["game_port"], query_port=FIXED_PORTS["query_port"],
+              rcon_port=FIXED_PORTS["rcon_port"])
     _save_json(RUNTIME_PATH, rt)
 
 
@@ -226,7 +257,7 @@ app.jinja_env.globals["PANEL_VERSION"] = PANEL_VERSION
 
 @app.context_processor
 def inject_me():
-    return {"me": current_user()}
+    return {"me": current_user(), "ports_locked": PORTS_LOCKED, "fixed_ports": FIXED_PORTS}
 
 
 @app.route("/lang/<code>")
@@ -959,9 +990,6 @@ def maps_launch():
         server_password = request.form.get("server_password", "").strip()
         server_password = server_password.replace("?", "").replace(" ", "").replace("\n", "").replace("\r", "")
         max_players = int(request.form.get("max_players", "70"))
-        port = int(request.form.get("port", "7777"))
-        query_port = int(request.form.get("query_port", "27015"))
-        rcon_port = int(request.form.get("rcon_port", "27020"))
     except ValueError:
         flash(t("launch_bad_number"))
         return redirect(url_for("maps_page"))
@@ -970,7 +998,7 @@ def maps_launch():
         rt.update({
             "session_name": session_name,
             "max_players": max(1, max_players),
-            "port": port, "query_port": query_port, "rcon_port": rcon_port,
+            # Ports: gesperrt – Formularwerte werden ignoriert (save_runtime erzwingt sie)
             "public_address": public_address,
             "battleye": bool(request.form.get("battleye")),
             "server_password": server_password,
@@ -1396,12 +1424,23 @@ def display_groups(entries):
 
 
 def enforce_rcon(key):
-    """RCON ist fürs Panel Pflicht: RCONEnabled immer True, RCONPort auf den
-    Port aus runtime.json festnageln (auch nach einem Rohtext-Speichern)."""
+    """RCON ist fürs Panel Pflicht und die Ports sind gesperrt: RCONEnabled immer
+    True, RCONPort auf den festen Port; Port/QueryPort werden – falls sie in der
+    INI stehen – ebenfalls auf die festen Werte zurückgesetzt (auch nach einem
+    Rohtext-Speichern)."""
     if key != "gus":
         return
     ini_set(GUS_PATH, "ServerSettings", "RCONEnabled", "True")
-    ini_set(GUS_PATH, "ServerSettings", "RCONPort", str(load_runtime()["rcon_port"]))
+    ini_set(GUS_PATH, "ServerSettings", "RCONPort", str(FIXED_PORTS["rcon_port"]))
+    _raw, entries = read_ini("gus")
+    sec = ""
+    for e in entries:
+        if e["type"] == "section":
+            sec = e["name"]
+        elif e["type"] == "kv" and e["key"] in ("Port", "QueryPort"):
+            want = str(FIXED_PORTS["game_port" if e["key"] == "Port" else "query_port"])
+            if e["value"] != want:
+                ini_set(GUS_PATH, sec, e["key"], want)
 
 
 @app.route("/config", methods=["GET"])

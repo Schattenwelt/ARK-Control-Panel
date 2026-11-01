@@ -15,7 +15,7 @@
 {% endif %}
 
 {% if file_key == 'gus' %}
-<div class="notice">{{ t('cfg_rcon_managed') }} {{ t('cfg_sessionname_note') }}</div>
+<div class="notice">🔒 {{ t('ports_locked_note', game=fixed_ports.game_port, raw=fixed_ports.game_port + 1, query=fixed_ports.query_port, rcon=fixed_ports.rcon_port) }} {{ t('cfg_rcon_managed') }} {{ t('cfg_sessionname_note') }}</div>
 {% endif %}
 
 <div class="tabs">

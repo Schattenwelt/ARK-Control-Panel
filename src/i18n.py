@@ -313,6 +313,9 @@ TRANSLATIONS = {
                   "en": "Raw file saved. Restart the server to apply."},
 
     # -- Erweiterungen (portiert aus dem ASA-Panel) --
+    "ports_locked_short": {"de": "Beim Installieren festgelegt – gesperrt", "en": "Set at install time – locked"},
+    "ports_locked_note": {"de": "Ports sind beim Installieren festgelegt und überall gesperrt – Spielport {game}/UDP (ARK nutzt zusätzlich {raw}/UDP), Query-Port {query}/UDP, RCON-Port {rcon}/TCP (nur intern). Ändern nur per Neuinstallation bzw. in /opt/ark-panel/panel.json.",
+                          "en": "Ports are set at install time and locked everywhere – game port {game}/UDP (ARK also uses {raw}/UDP), query port {query}/UDP, RCON port {rcon}/TCP (internal only). Change only by reinstalling or in /opt/ark-panel/panel.json."},
     'nav_saves': {"de": "Speicherstand", "en": "Saves"},
     'saves_title': {"de": "Speicherstand-Verwaltung", "en": "Save management"},
     'saves_intro': {"de": "Backups wiederherstellen, ein manuelles Backup anlegen oder eine Welt frisch starten. Aktionen nur bei gestopptem Server – sonst überschreibt der laufende Server die Dateien gleich wieder. Es wird nichts gelöscht: eine ersetzte Save bleibt als .corrupt-… liegen, eine zurückgesetzte Welt wandert nach SavedArks/{dir}/.", "en": "Restore a backup, make a manual backup or start a world fresh. Only while the server is stopped – otherwise the running server overwrites the files again. Nothing is deleted: a replaced save is kept as .corrupt-…, a reset world is moved to SavedArks/{dir}/."},
@@ -340,7 +343,7 @@ TRANSLATIONS = {
     'build_label': {"de": "Build", "en": "Build"},
     'rcon_starting': {"de": "RCON noch nicht erreichbar – der Server startet bzw. lädt die Welt. Beim Erststart oder mit vielen Mods kann das einige Minuten dauern.", "en": "RCON not reachable yet – the server is still starting/loading the world. The first start or many mods can take a few minutes."},
     'cfg_sessionname_note': {"de": "Der Servername (SessionName) wird unter „Startparameter“ gesetzt und hier nicht angezeigt.", "en": "The server name (SessionName) is set under “Launch parameters” and hidden here."},
-    'cfg_rcon_managed': {"de": "RCON wird vom Panel verwaltet und ist immer aktiv (RCONEnabled/RCONPort werden hier nicht angezeigt; Port unter „Karten → Startparameter“). ActiveMods setzt das Panel bei jedem Start aus der Mod-Liste.", "en": "RCON is managed by the panel and always on (RCONEnabled/RCONPort are hidden here; port under “Maps → Launch parameters”). ActiveMods is set by the panel from the mod list on every start."},
+    'cfg_rcon_managed': {"de": "RCON wird vom Panel verwaltet und ist immer aktiv (RCONEnabled/RCONPort/Port/QueryPort werden hier nicht angezeigt und beim Speichern erzwungen). ActiveMods setzt das Panel bei jedem Start aus der Mod-Liste.", "en": "RCON is managed by the panel and always on (RCONEnabled/RCONPort/Port/QueryPort are hidden here and enforced on save). ActiveMods is set by the panel from the mod list on every start."},
     'cfg_hidden_note': {"de": "Werte in Klammern/Anführungszeichen (Farb-/Struktur- und URL-Werte) werden zur besseren Lesbarkeit ohne die umschließenden ( ) bzw. \" \" angezeigt – beim Speichern werden sie automatisch wieder ergänzt.", "en": "Values in brackets/quotes (struct/color and URL values) are shown without their surrounding ( ) or \" \" for readability – they are re-added automatically on save."},
     'config_write_error': {"de": "Konnte die Datei nicht speichern (Rechte?): {err}", "en": "Could not save the file (permissions?): {err}"},
     'nav_schedule': {"de": "Neustarts", "en": "Restarts"},

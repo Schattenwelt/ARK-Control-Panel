@@ -37,6 +37,22 @@ else
     RCONP=27020; BATTLEYE="1"; SRVPW=""; MODS=""; EXTRA=""
 fi
 
+# --- Feste Ports aus panel.json (beim Installieren gesperrt) -----------------
+# Haben Vorrang vor runtime.json – so können die Ports auch durch eine von Hand
+# geänderte runtime.json oder einen Transfer nicht verstellt werden.
+PANEL_CONF="${PANEL_CONF:-/opt/ark-panel/panel.json}"
+if [ -r "$PANEL_CONF" ]; then
+    eval "$(python3 - "$PANEL_CONF" <<'PY' || true
+import json, sys
+c = json.load(open(sys.argv[1]))
+for key, var in (("game_port", "PORT"), ("query_port", "QUERY"), ("rcon_port", "RCONP")):
+    v = c.get(key)
+    if isinstance(v, int) or (isinstance(v, str) and v.isdigit()):
+        print("%s=%d" % (var, int(v)))
+PY
+)"
+fi
+
 # --- ServerAdminPassword aus der INI ziehen (für RCON) ----------------------
 # encoding-bewusst: ARK schreibt die INI beim Beenden als UTF-16, dann würde ein
 # ASCII-grep das Passwort nicht mehr finden (Null-Bytes zwischen den Zeichen).

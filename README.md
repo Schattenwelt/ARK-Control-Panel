@@ -88,8 +88,21 @@ Then open `http://<container-ip>`, pick a map under **Maps**, add Workshop IDs
 under **Mods** and click **Sync mods**, review settings under **Config**, and hit
 **Start**. The first start takes a while (world generation).
 
-Ports to open in your firewall: **7777/UDP** (game) and **27015/UDP** (query).
+Ports to open in your firewall (defaults): **7777–7778/UDP** (game) and **27015/UDP** (query).
 Join from the Steam server browser via `IP:27015`.
+
+## Ports (fixed & locked)
+
+Game, query and RCON port are chosen at install time (the installer asks; press
+Enter for the defaults 7777/27015/27020, or pass `GAME_PORT=… QUERY_PORT=…
+RCON_PORT=… PANEL_PORT=…` to skip the questions). They are stored in `panel.json`
+and **locked everywhere**: the launch-parameter form shows them read-only, the
+config editor resets `RCONPort`/`Port`/`QueryPort` on every save (field and raw
+editor), a transfer import never touches them, and `ark-launch.sh` reads them from
+`panel.json`, so even a hand-edited `runtime.json` can't change them. Remember that
+ARK also uses game port + 1 (UDP). Existing installs get the current ports written
+to `panel.json` by `scripts/update.sh`. To change a port later, edit `panel.json`
+and restart the panel and the server.
 
 ## Maps
 
